@@ -1,0 +1,121 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: inventory
+    // Document ID: auto-generated
+    // Fields:
+    //   - userId: string (required) - Owner UID
+    //   - itemName: string (required)
+    //   - sheinSku: string (required)
+    //   - category: string (required, enum)
+    //   - size: string (required)
+    //   - quantityStocked: number (required)
+    //   - buyingPriceUSD: number (required)
+    //   - exchangeRate: number (required)
+    //   - shippingCostETB: number (required)
+    //   - customsTaxETB: number (required)
+    //   - localDeliveryFeeETB: number (required)
+    //   - totalCostPriceETB: number (required)
+    //   - sellingPriceETB: number (required)
+    //   - dateAdded: string (required)
+    //   - image: string (optional)
+    //
+    // Collection: sales
+    // Document ID: auto-generated
+    // Fields:
+    //   - userId: string (required) - Owner UID
+    //   - itemId: string (required)
+    //   - itemName: string (required)
+    //   - sheinSku: string (required)
+    //   - category: string (required, enum)
+    //   - quantitySold: number (required)
+    //   - sellingPriceETB: number (required)
+    //   - totalCostPriceETB: number (required)
+    //   - dateSold: string (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.userId;
+    }
+    
+    function uidUnchanged() {
+      return !('userId' in request.resource.data) || request.resource.data.userId == request.auth.uid;
+    }
+    
+    function uidNotModified() {
+      return !('userId' in request.resource.data) || request.resource.data.userId == resource.data.userId;
+    }
+    
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+    
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    function isValidInventoryItem(data) {
+      return hasRequiredFields(['userId', 'itemName', 'sheinSku', 'category', 'size', 'quantityStocked', 'buyingPriceUSD', 'exchangeRate', 'shippingCostETB', 'customsTaxETB', 'localDeliveryFeeETB', 'totalCostPriceETB', 'sellingPriceETB', 'dateAdded']) &&
+             data.userId is string &&
+             data.itemName is string && data.itemName.size() > 0 && data.itemName.size() < 200 &&
+             data.sheinSku is string && data.sheinSku.size() > 0 && data.sheinSku.size() < 100 &&
+             data.category in ['Top', 'Dress', 'Trouser', 'Bra'] &&
+             data.size is string && data.size.size() > 0 && data.size.size() < 20 &&
+             data.quantityStocked is number && data.quantityStocked >= 0 &&
+             data.buyingPriceUSD is number && data.buyingPriceUSD >= 0 &&
+             data.exchangeRate is number && data.exchangeRate >= 0 &&
+             data.shippingCostETB is number && data.shippingCostETB >= 0 &&
+             data.customsTaxETB is number && data.customsTaxETB >= 0 &&
+             data.localDeliveryFeeETB is number && data.localDeliveryFeeETB >= 0 &&
+             data.totalCostPriceETB is number && data.totalCostPriceETB >= 0 &&
+             data.sellingPriceETB is number && data.sellingPriceETB >= 0 &&
+             isValidDateString(data.dateAdded) &&
+             (!('image' in data) || (data.image is string && data.image.size() < 1048576)); // 1MB limit
+    }
+
+    function isValidSale(data) {
+      return hasRequiredFields(['userId', 'itemId', 'itemName', 'sheinSku', 'category', 'quantitySold', 'sellingPriceETB', 'totalCostPriceETB', 'dateSold']) &&
+             data.userId is string &&
+             data.itemId is string && data.itemId.size() > 0 && data.itemId.size() < 100 &&
+             data.itemName is string && data.itemName.size() > 0 && data.itemName.size() < 200 &&
+             data.sheinSku is string && data.sheinSku.size() > 0 && data.sheinSku.size() < 100 &&
+             data.category in ['Top', 'Dress', 'Trouser', 'Bra'] &&
+             data.quantitySold is number && data.quantitySold > 0 &&
+             data.sellingPriceETB is number && data.sellingPriceETB >= 0 &&
+             data.totalCostPriceETB is number && data.totalCostPriceETB >= 0 &&
+             isValidDateString(data.dateSold);
+    }
+
+    match /inventory/{itemId} {
+      allow read: if isDocOwner();
+      allow create: if isAuthenticated() && isValidInventoryItem(request.resource.data) && uidUnchanged();
+      allow update: if isDocOwner() && isValidInventoryItem(request.resource.data) && uidNotModified();
+      allow delete: if isDocOwner();
+    }
+
+    match /sales/{saleId} {
+      allow read: if isDocOwner();
+      allow create: if isAuthenticated() && isValidSale(request.resource.data) && uidUnchanged();
+      allow update: if isDocOwner() && isValidSale(request.resource.data) && uidNotModified();
+      allow delete: if isDocOwner();
+    }
+  }
+}

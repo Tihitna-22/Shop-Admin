@@ -1,0 +1,163 @@
+{
+  "entities": {
+    "InventoryItem": {
+      "title": "InventoryItem",
+      "description": "An item in the inventory.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The ID of the user who owns this item."
+        },
+        "itemName": {
+          "type": "string"
+        },
+        "sheinSku": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["Top", "Dress", "Trouser", "Bra"]
+        },
+        "size": {
+          "type": "string"
+        },
+        "quantityStocked": {
+          "type": "number"
+        },
+        "buyingPriceUSD": {
+          "type": "number"
+        },
+        "exchangeRate": {
+          "type": "number"
+        },
+        "shippingCostETB": {
+          "type": "number"
+        },
+        "customsTaxETB": {
+          "type": "number"
+        },
+        "localDeliveryFeeETB": {
+          "type": "number"
+        },
+        "totalCostPriceETB": {
+          "type": "number"
+        },
+        "sellingPriceETB": {
+          "type": "number"
+        },
+        "dateAdded": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "image": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "userId",
+        "itemName",
+        "sheinSku",
+        "category",
+        "size",
+        "quantityStocked",
+        "buyingPriceUSD",
+        "exchangeRate",
+        "shippingCostETB",
+        "customsTaxETB",
+        "localDeliveryFeeETB",
+        "totalCostPriceETB",
+        "sellingPriceETB",
+        "dateAdded"
+      ]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "A record of a sold item.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The ID of the user who owns this sale."
+        },
+        "itemId": {
+          "type": "string"
+        },
+        "itemName": {
+          "type": "string"
+        },
+        "sheinSku": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["Top", "Dress", "Trouser", "Bra"]
+        },
+        "quantitySold": {
+          "type": "number"
+        },
+        "sellingPriceETB": {
+          "type": "number"
+        },
+        "totalCostPriceETB": {
+          "type": "number"
+        },
+        "dateSold": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "userId",
+        "itemId",
+        "itemName",
+        "sheinSku",
+        "category",
+        "quantitySold",
+        "sellingPriceETB",
+        "totalCostPriceETB",
+        "dateSold"
+      ]
+    },
+    "StoreSettings": {
+      "title": "StoreSettings",
+      "description": "User settings for the store.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string"
+        },
+        "telegramBotToken": {
+          "type": "string"
+        },
+        "telegramChatId": {
+          "type": "string"
+        },
+        "autoPostToTelegram": {
+          "type": "boolean"
+        }
+      },
+      "required": ["userId"]
+    }
+  },
+  "firestore": {
+    "/inventory/{itemId}": {
+      "schema": {
+        "$ref": "#/entities/InventoryItem"
+      },
+      "description": "Inventory items."
+    },
+    "/sales/{saleId}": {
+      "schema": {
+        "$ref": "#/entities/Sale"
+      },
+      "description": "Sales records."
+    },
+    "/settings/{userId}": {
+      "schema": {
+        "$ref": "#/entities/StoreSettings"
+      },
+      "description": "User settings."
+    }
+  }
+}

@@ -40,6 +40,17 @@ export function Dashboard() {
     return acc;
   }, {} as Record<string, number>);
 
+  const filteredSales = selectedRangeSales.filter(sale => {
+    if (saleFilter === 'All') return true;
+    if (saleFilter === 'In Stock') return sale.status === 'in_stock' || !sale.status;
+    if (saleFilter === 'Ordered') return sale.status === 'ordered';
+    return true;
+  });
+
+  const totalQty = filteredSales.reduce((sum, sale) => sum + sale.quantitySold, 0);
+  const grandTotalPrice = filteredSales.reduce((sum, sale) => sum + (sale.sellingPriceETB * sale.quantitySold), 0);
+  const grandTotalProfit = filteredSales.reduce((sum, sale) => sum + ((sale.sellingPriceETB - sale.totalCostPriceETB) * sale.quantitySold), 0);
+
   return (
     <div className="space-y-6">
       <div className="sm:flex sm:items-center sm:justify-between">
@@ -198,6 +209,7 @@ export function Dashboard() {
                   <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">SKU</th>
                   <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Qty</th>
                   <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Sale Price</th>
+                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Total Price</th>
                   <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Profit</th>
                   <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Date & Time</th>
                   <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6">
@@ -206,13 +218,7 @@ export function Dashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
-                {selectedRangeSales
-                  .filter(sale => {
-                    if (saleFilter === 'All') return true;
-                    if (saleFilter === 'In Stock') return sale.status === 'in_stock' || !sale.status;
-                    if (saleFilter === 'Ordered') return sale.status === 'ordered';
-                    return true;
-                  })
+                {filteredSales
                   .slice()
                   .reverse()
                   .map((sale) => {
@@ -257,6 +263,7 @@ export function Dashboard() {
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{sale.sheinSku}</td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{sale.quantitySold}</td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{formatETB(sale.sellingPriceETB)}</td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm font-medium text-gray-900">{formatETB(sale.sellingPriceETB * sale.quantitySold)}</td>
                       <td className={`whitespace-nowrap px-3 py-4 text-sm font-medium ${profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                         {formatETB(profit)}
                       </td>
@@ -275,9 +282,21 @@ export function Dashboard() {
                     </tr>
                   );
                 })}
-                {selectedRangeSales.length === 0 && (
+                {filteredSales.length > 0 && (
+                  <tr className="bg-gray-50 font-semibold text-gray-900 border-t-2 border-gray-200">
+                    <td colSpan={5} className="whitespace-nowrap px-3 py-4 text-right text-sm sm:pl-6">Grand Total:</td>
+                    <td className="whitespace-nowrap px-3 py-4 text-sm">{totalQty}</td>
+                    <td className="whitespace-nowrap px-3 py-4 text-sm"></td>
+                    <td className="whitespace-nowrap px-3 py-4 text-sm">{formatETB(grandTotalPrice)}</td>
+                    <td className={`whitespace-nowrap px-3 py-4 text-sm ${grandTotalProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                      {formatETB(grandTotalProfit)}
+                    </td>
+                    <td colSpan={2}></td>
+                  </tr>
+                )}
+                {filteredSales.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="py-8 text-center text-sm text-gray-500">
+                    <td colSpan={11} className="py-8 text-center text-sm text-gray-500">
                       No activities recorded in this date range.
                     </td>
                   </tr>

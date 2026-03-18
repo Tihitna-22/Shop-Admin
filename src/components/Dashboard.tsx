@@ -1,18 +1,22 @@
 import React, { useState } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import { formatETB } from '../lib/formatters';
-import { isThisMonth, parseISO, isSameDay, format } from 'date-fns';
+import { isThisMonth, parseISO, isSameDay, format, startOfMonth, endOfDay, startOfDay, isWithinInterval } from 'date-fns';
 import { TrendingUp, TrendingDown, DollarSign, Package, ShoppingCart, Receipt, Calendar, Image as ImageIcon } from 'lucide-react';
 
 export function Dashboard() {
   const { inventory, sales, expenses } = useInventory();
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [startDate, setStartDate] = useState<Date>(startOfMonth(new Date()));
+  const [endDate, setEndDate] = useState<Date>(endOfDay(new Date()));
 
-  // Calculate Selected Day Profit
-  const selectedDaySales = sales.filter((sale) => isSameDay(parseISO(sale.dateSold), selectedDate));
-  const dailyRevenue = selectedDaySales.reduce((sum, sale) => sum + (sale.sellingPriceETB * sale.quantitySold), 0);
-  const dailyCost = selectedDaySales.reduce((sum, sale) => sum + (sale.totalCostPriceETB * sale.quantitySold), 0);
-  const dailyProfit = dailyRevenue - dailyCost;
+  // Calculate Selected Range Profit
+  const selectedRangeSales = sales.filter((sale) => {
+    const saleDate = parseISO(sale.dateSold);
+    return isWithinInterval(saleDate, { start: startOfDay(startDate), end: endOfDay(endDate) });
+  });
+  const rangeRevenue = selectedRangeSales.reduce((sum, sale) => sum + (sale.sellingPriceETB * sale.quantitySold), 0);
+  const rangeCost = selectedRangeSales.reduce((sum, sale) => sum + (sale.totalCostPriceETB * sale.quantitySold), 0);
+  const rangeProfit = rangeRevenue - rangeCost;
 
   // Calculate Monthly Profit
   const monthSales = sales.filter((sale) => isThisMonth(parseISO(sale.dateSold)));
@@ -40,36 +44,50 @@ export function Dashboard() {
         <h2 className="text-2xl font-bold tracking-tight text-gray-900">Financial Analytics</h2>
         <div className="mt-4 sm:mt-0 flex items-center gap-2">
           <Calendar className="h-5 w-5 text-gray-500" />
-          <input
-            type="date"
-            value={format(selectedDate, 'yyyy-MM-dd')}
-            onChange={(e) => {
-              const newDate = new Date(e.target.value);
-              if (!isNaN(newDate.getTime())) {
-                setSelectedDate(newDate);
-              }
-            }}
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-          />
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={format(startDate, 'yyyy-MM-dd')}
+              onChange={(e) => {
+                const newDate = new Date(e.target.value);
+                if (!isNaN(newDate.getTime())) {
+                  setStartDate(newDate);
+                }
+              }}
+              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black sm:text-sm"
+            />
+            <span className="text-gray-500">to</span>
+            <input
+              type="date"
+              value={format(endDate, 'yyyy-MM-dd')}
+              onChange={(e) => {
+                const newDate = new Date(e.target.value);
+                if (!isNaN(newDate.getTime())) {
+                  setEndDate(newDate);
+                }
+              }}
+              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-black focus:ring-black sm:text-sm"
+            />
+          </div>
         </div>
       </div>
       
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Daily Profit Card */}
+        {/* Selected Range Profit Card */}
         <div className="overflow-hidden rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-900/5">
           <div className="flex items-center gap-x-4">
-            <div className={`p-3 rounded-xl ${dailyProfit >= 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
-              {dailyProfit >= 0 ? <TrendingUp className="h-6 w-6" /> : <TrendingDown className="h-6 w-6" />}
+            <div className={`p-3 rounded-xl ${rangeProfit >= 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
+              {rangeProfit >= 0 ? <TrendingUp className="h-6 w-6" /> : <TrendingDown className="h-6 w-6" />}
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500">Profit on {format(selectedDate, 'MMM d')}</p>
-              <p className={`text-2xl font-semibold tracking-tight ${dailyProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                {formatETB(dailyProfit)}
+              <p className="text-sm font-medium text-gray-500">Profit (Selected Range)</p>
+              <p className={`text-2xl font-semibold tracking-tight ${rangeProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                {formatETB(rangeProfit)}
               </p>
             </div>
           </div>
           <div className="mt-4 text-sm text-gray-500">
-            Revenue: {formatETB(dailyRevenue)}
+            Revenue: {formatETB(rangeRevenue)}
           </div>
         </div>
 
@@ -148,7 +166,7 @@ export function Dashboard() {
 
       {/* Activities Table */}
       <div className="mt-8">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Activities on {format(selectedDate, 'MMMM d, yyyy')}</h3>
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Activities ({format(startDate, 'MMM d, yyyy')} - {format(endDate, 'MMM d, yyyy')})</h3>
         <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -160,11 +178,11 @@ export function Dashboard() {
                   <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Qty</th>
                   <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Sale Price</th>
                   <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Profit</th>
-                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Time</th>
+                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Date & Time</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
-                {selectedDaySales.slice().reverse().map((sale) => {
+                {selectedRangeSales.slice().reverse().map((sale) => {
                   const profit = (sale.sellingPriceETB - sale.totalCostPriceETB) * sale.quantitySold;
                   const item = inventory.find(i => i.id === sale.itemId);
                   return (
@@ -190,15 +208,15 @@ export function Dashboard() {
                         {formatETB(profit)}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                        {new Date(sale.dateSold).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {format(new Date(sale.dateSold), 'MMM d, h:mm a')}
                       </td>
                     </tr>
                   );
                 })}
-                {selectedDaySales.length === 0 && (
+                {selectedRangeSales.length === 0 && (
                   <tr>
                     <td colSpan={7} className="py-8 text-center text-sm text-gray-500">
-                      No activities recorded on this day.
+                      No activities recorded in this date range.
                     </td>
                   </tr>
                 )}

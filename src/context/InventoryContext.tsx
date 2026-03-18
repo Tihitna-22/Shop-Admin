@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { InventoryItem, Sale, Expense, StoreSettings } from '../types';
 import { db, auth } from '../firebase';
-import { collection, doc, setDoc, deleteDoc, updateDoc, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, updateDoc, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
 enum OperationType {
@@ -51,7 +51,9 @@ interface InventoryContextType {
   addItem: (item: Omit<InventoryItem, 'id' | 'userId' | 'dateAdded'>) => Promise<void>;
   updateItem: (id: string, item: Partial<InventoryItem>) => Promise<void>;
   deleteItem: (id: string) => Promise<void>;
+  deleteSale: (id: string) => Promise<void>;
   markAsSold: (id: string, quantity: number) => Promise<void>;
+  updateItemStatus: (id: string, status: 'in_stock' | 'ordered') => Promise<void>;
   addExpense: (expense: Omit<Expense, 'id' | 'userId' | 'date'>) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
   updateSettings: (settings: Partial<StoreSettings>) => Promise<void>;
@@ -159,12 +161,36 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const updateItemStatus = async (id: string, status: 'in_stock' | 'ordered') => {
+    if (!userId) return;
+    try {
+      await updateDoc(doc(db, 'inventory', id), { status });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `inventory/${id}`);
+    }
+  };
+
   const deleteItem = async (id: string) => {
     if (!userId) return;
     try {
       await deleteDoc(doc(db, 'inventory', id));
+      
+      // Delete all related sales
+      const salesQuery = query(collection(db, 'sales'), where('itemId', '==', id));
+      const salesSnapshot = await getDocs(salesQuery);
+      const deletePromises = salesSnapshot.docs.map(saleDoc => deleteDoc(saleDoc.ref));
+      await Promise.all(deletePromises);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `inventory/${id}`);
+    }
+  };
+
+  const deleteSale = async (id: string) => {
+    if (!userId) return;
+    try {
+      await deleteDoc(doc(db, 'sales', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `sales/${id}`);
     }
   };
 
@@ -190,12 +216,45 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       sellingPriceETB: item.sellingPriceETB,
       totalCostPriceETB: item.totalCostPriceETB,
       dateSold: new Date().toISOString(),
+      status: item.status || 'in_stock',
+      ...(item.customerName && { customerName: item.customerName }),
+      ...(item.customerPhone && { customerPhone: item.customerPhone }),
+      ...(item.customerTelegram && { customerTelegram: item.customerTelegram }),
     };
 
     try {
       await setDoc(doc(db, 'sales', saleId), newSale);
       const newQuantity = item.quantityStocked - quantity;
       await updateDoc(doc(db, 'inventory', id), { quantityStocked: newQuantity });
+
+      // Post to Telegram if item is out of stock and it wasn't an ordered item
+      if (newQuantity === 0 && item.status !== 'ordered' && settings?.telegramBotToken && settings?.telegramChatId) {
+        try {
+          const caption = `❌Sold out`;
+          const tgFormData = new FormData();
+          tgFormData.append('chat_id', settings.telegramChatId);
+          tgFormData.append('caption', caption);
+
+          if (item.image) {
+            const res = await fetch(item.image);
+            const blob = await res.blob();
+            tgFormData.append('photo', blob, 'image.jpg');
+            
+            await fetch(`https://api.telegram.org/bot${settings.telegramBotToken}/sendPhoto`, {
+              method: 'POST',
+              body: tgFormData,
+            });
+          } else {
+            tgFormData.append('text', caption);
+            await fetch(`https://api.telegram.org/bot${settings.telegramBotToken}/sendMessage`, {
+              method: 'POST',
+              body: tgFormData,
+            });
+          }
+        } catch (tgError) {
+          console.error('Failed to post sold out to Telegram:', tgError);
+        }
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `sales/${saleId}`);
     }
@@ -237,7 +296,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
 
   return (
     <InventoryContext.Provider
-      value={{ inventory, sales, expenses, settings, addItem, updateItem, deleteItem, markAsSold, addExpense, deleteExpense, updateSettings }}
+      value={{ inventory, sales, expenses, settings, addItem, updateItem, deleteItem, deleteSale, markAsSold, updateItemStatus, addExpense, deleteExpense, updateSettings }}
     >
       {children}
     </InventoryContext.Provider>

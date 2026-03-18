@@ -2,12 +2,14 @@ import React, { useState } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import { formatETB } from '../lib/formatters';
 import { isThisMonth, parseISO, isSameDay, format, startOfMonth, endOfDay, startOfDay, isWithinInterval } from 'date-fns';
-import { TrendingUp, TrendingDown, DollarSign, Package, ShoppingCart, Receipt, Calendar, Image as ImageIcon } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Package, ShoppingCart, Receipt, Calendar, Image as ImageIcon, Trash2, X } from 'lucide-react';
 
 export function Dashboard() {
-  const { inventory, sales, expenses } = useInventory();
+  const { inventory, sales, expenses, deleteSale } = useInventory();
   const [startDate, setStartDate] = useState<Date>(startOfMonth(new Date()));
   const [endDate, setEndDate] = useState<Date>(endOfDay(new Date()));
+  const [saleToDelete, setSaleToDelete] = useState<string | null>(null);
+  const [saleFilter, setSaleFilter] = useState<'All' | 'In Stock' | 'Ordered'>('All');
 
   // Calculate Selected Range Profit
   const selectedRangeSales = sales.filter((sale) => {
@@ -166,7 +168,24 @@ export function Dashboard() {
 
       {/* Activities Table */}
       <div className="mt-8">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Activities ({format(startDate, 'MMM d, yyyy')} - {format(endDate, 'MMM d, yyyy')})</h3>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+          <h3 className="text-lg font-medium text-gray-900">Activities ({format(startDate, 'MMM d, yyyy')} - {format(endDate, 'MMM d, yyyy')})</h3>
+          <div className="flex bg-gray-100 rounded-full p-0.5">
+            {(['All', 'In Stock', 'Ordered'] as const).map((status) => (
+              <button
+                key={status}
+                onClick={() => setSaleFilter(status)}
+                className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                  saleFilter === status
+                    ? 'bg-white text-black shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                {status}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
@@ -174,15 +193,29 @@ export function Dashboard() {
                 <tr>
                   <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">Photo</th>
                   <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Item</th>
+                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Type</th>
+                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Customer</th>
                   <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">SKU</th>
                   <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Qty</th>
                   <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Sale Price</th>
                   <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Profit</th>
                   <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Date & Time</th>
+                  <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
-                {selectedRangeSales.slice().reverse().map((sale) => {
+                {selectedRangeSales
+                  .filter(sale => {
+                    if (saleFilter === 'All') return true;
+                    if (saleFilter === 'In Stock') return sale.status === 'in_stock' || !sale.status;
+                    if (saleFilter === 'Ordered') return sale.status === 'ordered';
+                    return true;
+                  })
+                  .slice()
+                  .reverse()
+                  .map((sale) => {
                   const profit = (sale.sellingPriceETB - sale.totalCostPriceETB) * sale.quantitySold;
                   const item = inventory.find(i => i.id === sale.itemId);
                   return (
@@ -201,6 +234,26 @@ export function Dashboard() {
                         )}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm font-medium text-gray-900">{sale.itemName}</td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm">
+                        <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                          sale.status === 'ordered' 
+                            ? 'bg-purple-50 text-purple-700 ring-1 ring-inset ring-purple-600/20'
+                            : 'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600/20'
+                        }`}>
+                          {sale.status === 'ordered' ? 'Ordered' : 'In Stock'}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                        {sale.customerName || sale.customerPhone || sale.customerTelegram ? (
+                          <div className="flex flex-col gap-0.5 text-xs">
+                            {sale.customerName && <span className="font-medium text-gray-900">{sale.customerName}</span>}
+                            {sale.customerPhone && <span>{sale.customerPhone}</span>}
+                            {sale.customerTelegram && <span className="text-indigo-600">{sale.customerTelegram}</span>}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 italic">Walk-in</span>
+                        )}
+                      </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{sale.sheinSku}</td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{sale.quantitySold}</td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{formatETB(sale.sellingPriceETB)}</td>
@@ -210,12 +263,21 @@ export function Dashboard() {
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
                         {format(new Date(sale.dateSold), 'MMM d, h:mm a')}
                       </td>
+                      <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
+                        <button
+                          onClick={() => setSaleToDelete(sale.id)}
+                          className="text-red-600 hover:text-red-900 p-2"
+                          title="Delete sale record"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
                 {selectedRangeSales.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="py-8 text-center text-sm text-gray-500">
+                    <td colSpan={10} className="py-8 text-center text-sm text-gray-500">
                       No activities recorded in this date range.
                     </td>
                   </tr>
@@ -225,6 +287,43 @@ export function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {saleToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Delete Sale Record</h3>
+              <button
+                onClick={() => setSaleToDelete(null)}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 mb-6">
+              Are you sure you want to delete this sale record? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setSaleToDelete(null)}
+                className="rounded-md px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 border border-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  deleteSale(saleToDelete);
+                  setSaleToDelete(null);
+                }}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

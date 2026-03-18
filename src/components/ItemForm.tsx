@@ -15,6 +15,13 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
   const [isCompressing, setIsCompressing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [postToTelegram, setPostToTelegram] = useState(false);
+
+  React.useEffect(() => {
+    if (!item && settings?.autoPostToTelegram) {
+      setPostToTelegram(true);
+    }
+  }, [item, settings?.autoPostToTelegram]);
   
   const [formData, setFormData] = useState({
     itemName: item?.itemName || '',
@@ -29,6 +36,10 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
     localDeliveryFeeETB: item?.localDeliveryFeeETB?.toString() ?? '',
     sellingPriceETB: item?.sellingPriceETB?.toString() ?? '',
     image: item?.image || '',
+    status: item?.status || 'in_stock',
+    customerName: item?.customerName || '',
+    customerPhone: item?.customerPhone || '',
+    customerTelegram: item?.customerTelegram || '',
   });
 
   const totalCostPriceETB = calculateTotalCost(
@@ -68,17 +79,24 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
     setIsSubmitting(true);
     setError(null);
     
-    const itemData = {
-      ...formData,
-      quantityStocked: Number(formData.quantityStocked) || 0,
-      buyingPriceUSD: Number(formData.buyingPriceUSD) || 0,
-      exchangeRate: Number(formData.exchangeRate) || 0,
-      shippingCostETB: Number(formData.shippingCostETB) || 0,
-      customsTaxETB: Number(formData.customsTaxETB) || 0,
-      localDeliveryFeeETB: Number(formData.localDeliveryFeeETB) || 0,
-      sellingPriceETB: Number(formData.sellingPriceETB) || 0,
-      totalCostPriceETB,
-    };
+      const itemData: any = {
+        ...formData,
+        quantityStocked: Number(formData.quantityStocked) || 0,
+        buyingPriceUSD: Number(formData.buyingPriceUSD) || 0,
+        exchangeRate: Number(formData.exchangeRate) || 0,
+        shippingCostETB: Number(formData.shippingCostETB) || 0,
+        customsTaxETB: Number(formData.customsTaxETB) || 0,
+        localDeliveryFeeETB: Number(formData.localDeliveryFeeETB) || 0,
+        sellingPriceETB: Number(formData.sellingPriceETB) || 0,
+        totalCostPriceETB,
+      };
+
+      // Clean up customer fields if not ordered
+      if (itemData.status !== 'ordered') {
+        delete itemData.customerName;
+        delete itemData.customerPhone;
+        delete itemData.customerTelegram;
+      }
 
     try {
       if (item) {
@@ -86,8 +104,8 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
       } else {
         await addItem(itemData);
         
-        // Post to Telegram if configured
-        if (settings?.autoPostToTelegram && settings?.telegramBotToken && settings?.telegramChatId) {
+        // Post to Telegram if configured and checked
+        if (postToTelegram && settings?.telegramBotToken && settings?.telegramChatId) {
           try {
             const caption = `✨Available on hand\n✨Price- ${itemData.sellingPriceETB} ETB\n     Size - ${itemData.size}\n     Contact- @Mirafashion22`;
             const tgFormData = new FormData();
@@ -183,6 +201,60 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
 
           {/* Basic Info */}
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700">Status</label>
+              <select
+                name="status"
+                value={formData.status}
+                onChange={handleChange}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black sm:text-sm bg-gray-50"
+              >
+                <option value="in_stock">In Stock (Available)</option>
+                <option value="ordered">Ordered (Incoming / Pre-order)</option>
+              </select>
+            </div>
+
+            {formData.status === 'ordered' && (
+              <div className="sm:col-span-2 bg-indigo-50 p-4 rounded-lg border border-indigo-100 space-y-4">
+                <h3 className="text-sm font-medium text-indigo-900">Customer Details (Optional)</h3>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div>
+                    <label className="block text-xs font-medium text-indigo-700">Name</label>
+                    <input
+                      type="text"
+                      name="customerName"
+                      value={formData.customerName}
+                      onChange={handleChange}
+                      placeholder="John Doe"
+                      className="mt-1 block w-full rounded-md border border-indigo-200 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-indigo-700">Phone Number</label>
+                    <input
+                      type="tel"
+                      name="customerPhone"
+                      value={formData.customerPhone}
+                      onChange={handleChange}
+                      placeholder="0911..."
+                      className="mt-1 block w-full rounded-md border border-indigo-200 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-indigo-700">Telegram Username</label>
+                    <input
+                      type="text"
+                      name="customerTelegram"
+                      value={formData.customerTelegram}
+                      onChange={handleChange}
+                      placeholder="@username"
+                      className="mt-1 block w-full rounded-md border border-indigo-200 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+            
             <div>
               <label className="block text-sm font-medium text-gray-700">Item Name</label>
               <input
@@ -336,6 +408,23 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
               )}
             </div>
           </div>
+
+          {!item && settings?.telegramBotToken && settings?.telegramChatId && (
+            <div className="border-t border-gray-200 pt-6">
+              <div className="flex items-center gap-x-3">
+                <input
+                  id="postToTelegram"
+                  type="checkbox"
+                  checked={postToTelegram}
+                  onChange={(e) => setPostToTelegram(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-black focus:ring-black"
+                />
+                <label htmlFor="postToTelegram" className="text-sm font-medium leading-6 text-gray-900">
+                  Post this item to Telegram channel
+                </label>
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-end gap-3 pt-4">
             <button

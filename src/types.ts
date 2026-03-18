@@ -18,6 +18,10 @@ export interface InventoryItem {
   sellingPriceETB: number;
   dateAdded: string;
   image?: string; // Base64 compressed image
+  status?: 'in_stock' | 'ordered';
+  customerName?: string;
+  customerPhone?: string;
+  customerTelegram?: string;
 }
 
 export interface Sale {
@@ -31,6 +35,10 @@ export interface Sale {
   sellingPriceETB: number; // Price per item at time of sale
   totalCostPriceETB: number; // Cost per item at time of sale
   dateSold: string;
+  status?: 'in_stock' | 'ordered';
+  customerName?: string;
+  customerPhone?: string;
+  customerTelegram?: string;
 }
 
 export type ExpenseCategory = 'Rent' | 'Internet' | 'Packaging' | 'Transport' | 'Other';

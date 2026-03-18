@@ -2,21 +2,41 @@ import React, { useState } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import { formatETB } from '../lib/formatters';
 import { ItemForm } from './ItemForm';
-import { Plus, Edit2, Trash2, CheckCircle2, Image as ImageIcon, X } from 'lucide-react';
+import { BulkImport } from './BulkImport';
+import { Plus, Edit2, Trash2, CheckCircle2, Image as ImageIcon, X, Upload } from 'lucide-react';
 
 export function Inventory() {
-  const { inventory, sales, deleteItem, markAsSold } = useInventory();
+  const { inventory, sales, deleteItem, markAsSold, updateItemStatus } = useInventory();
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [sellingItem, setSellingItem] = useState<any>(null);
   const [sellQuantity, setSellQuantity] = useState(1);
   const [filterCategory, setFilterCategory] = useState<'All' | 'Top' | 'Dress' | 'Trouser' | 'Bra'>('All');
+  const [activeTab, setActiveTab] = useState<'all' | 'in_stock' | 'ordered' | 'sold_out'>('in_stock');
+  const [orderedFilter, setOrderedFilter] = useState<'All' | 'Pending' | 'Delivered'>('All');
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
-  const filteredInventory = inventory.filter(item => 
-    filterCategory === 'All' || item.category === filterCategory
-  );
+  const filteredInventory = inventory.filter(item => {
+    const itemStatus = item.status || 'in_stock';
+    
+    let matchesTab = false;
+    if (activeTab === 'all') matchesTab = true;
+    else if (activeTab === 'in_stock') matchesTab = itemStatus === 'in_stock' && item.quantityStocked > 0;
+    else if (activeTab === 'ordered') matchesTab = itemStatus === 'ordered';
+    else if (activeTab === 'sold_out') matchesTab = itemStatus === 'in_stock' && item.quantityStocked === 0;
+
+    const matchesCategory = filterCategory === 'All' || item.category === filterCategory;
+    
+    let matchesOrderedFilter = true;
+    if (activeTab === 'ordered') {
+      if (orderedFilter === 'Pending') matchesOrderedFilter = item.quantityStocked > 0;
+      if (orderedFilter === 'Delivered') matchesOrderedFilter = item.quantityStocked === 0;
+    }
+
+    return matchesTab && matchesCategory && matchesOrderedFilter;
+  });
 
   const handleEdit = (item: any) => {
     setEditingItem(item);
@@ -43,6 +63,12 @@ export function Inventory() {
     }
   };
 
+  const handleMarkDelivered = async (item: any) => {
+    if (item.quantityStocked > 0) {
+      await markAsSold(item.id, item.quantityStocked);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="sm:flex sm:items-center sm:justify-between">
@@ -52,7 +78,14 @@ export function Inventory() {
             Manage your stock, pricing, and record sales.
           </p>
         </div>
-        <div className="mt-4 sm:mt-0">
+        <div className="mt-4 sm:mt-0 flex gap-3">
+          <button
+            onClick={() => setIsBulkImportOpen(true)}
+            className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 sm:w-auto"
+          >
+            <Upload className="-ml-1 mr-2 h-5 w-5" />
+            Bulk Import
+          </button>
           <button
             onClick={() => {
               setEditingItem(null);
@@ -66,20 +99,82 @@ export function Inventory() {
         </div>
       </div>
 
-      <div className="mt-6 flex flex-wrap gap-2">
-        {(['All', 'Top', 'Dress', 'Trouser', 'Bra'] as const).map((cat) => (
+      <div className="mt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200 pb-4">
+        <div className="flex gap-4 overflow-x-auto">
           <button
-            key={cat}
-            onClick={() => setFilterCategory(cat)}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-              filterCategory === cat
-                ? 'bg-black text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            onClick={() => setActiveTab('all')}
+            className={`pb-4 text-sm font-medium border-b-2 transition-colors -mb-[17px] whitespace-nowrap ${
+              activeTab === 'all'
+                ? 'border-black text-black'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
-            {cat === 'All' ? 'All' : cat + 's'}
+            All Items
           </button>
-        ))}
+          <button
+            onClick={() => setActiveTab('in_stock')}
+            className={`pb-4 text-sm font-medium border-b-2 transition-colors -mb-[17px] whitespace-nowrap ${
+              activeTab === 'in_stock'
+                ? 'border-black text-black'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            In Stock
+          </button>
+          <button
+            onClick={() => setActiveTab('ordered')}
+            className={`pb-4 text-sm font-medium border-b-2 transition-colors -mb-[17px] whitespace-nowrap ${
+              activeTab === 'ordered'
+                ? 'border-black text-black'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Incoming Orders
+          </button>
+          <button
+            onClick={() => setActiveTab('sold_out')}
+            className={`pb-4 text-sm font-medium border-b-2 transition-colors -mb-[17px] whitespace-nowrap ${
+              activeTab === 'sold_out'
+                ? 'border-black text-black'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Sold Out
+          </button>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {activeTab === 'ordered' && (
+            <div className="flex bg-gray-100 rounded-full p-0.5 mr-4">
+              {(['All', 'Pending', 'Delivered'] as const).map((status) => (
+                <button
+                  key={status}
+                  onClick={() => setOrderedFilter(status)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                    orderedFilter === status
+                      ? 'bg-white text-black shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  {status}
+                </button>
+              ))}
+            </div>
+          )}
+          {(['All', 'Top', 'Dress', 'Trouser', 'Bra'] as const).map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setFilterCategory(cat)}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                filterCategory === cat
+                  ? 'bg-black text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {cat === 'All' ? 'All' : cat + 's'}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="mt-6 flex flex-col">
@@ -134,6 +229,14 @@ export function Inventory() {
                                 </span>
                               </div>
                               <div className="text-gray-500 text-sm mt-0.5">SKU: {item.sheinSku} | Size: {item.size}</div>
+                              {item.status === 'ordered' && (item.customerName || item.customerPhone || item.customerTelegram) && (
+                                <div className="mt-1.5 inline-flex flex-col gap-0.5 text-xs text-indigo-600 bg-indigo-50/50 p-1.5 rounded-md border border-indigo-100/50">
+                                  <span className="font-semibold text-indigo-900">Ordered by:</span>
+                                  {item.customerName && <span>{item.customerName}</span>}
+                                  {item.customerPhone && <span>📞 {item.customerPhone}</span>}
+                                  {item.customerTelegram && <span>💬 {item.customerTelegram}</span>}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -161,31 +264,46 @@ export function Inventory() {
                         </td>
                         <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                           <div className="flex justify-end gap-2">
-                            <button
-                              onClick={() => setSellingItem(item)}
-                              disabled={item.quantityStocked === 0}
-                              className={`inline-flex items-center rounded-md px-2.5 py-1.5 text-sm font-semibold shadow-sm ring-1 ring-inset ${
-                                item.quantityStocked > 0 
-                                  ? 'bg-white text-gray-900 ring-gray-300 hover:bg-gray-50' 
-                                  : 'bg-gray-50 text-gray-400 ring-gray-200 cursor-not-allowed'
-                              }`}
-                            >
-                              <CheckCircle2 className="-ml-0.5 mr-1.5 h-4 w-4 text-emerald-500" />
-                              Sell
-                            </button>
+                            {item.status === 'ordered' ? (
+                              item.quantityStocked === 0 ? (
+                                <span className="inline-flex items-center rounded-md px-2.5 py-1.5 text-sm font-semibold bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
+                                  <CheckCircle2 className="-ml-0.5 mr-1.5 h-4 w-4" />
+                                  Delivered
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => handleMarkDelivered(item)}
+                                  className="inline-flex items-center rounded-md px-2.5 py-1.5 text-sm font-semibold shadow-sm ring-1 ring-inset bg-white text-gray-900 ring-gray-300 hover:bg-gray-50"
+                                >
+                                  <CheckCircle2 className="-ml-0.5 mr-1.5 h-4 w-4 text-emerald-500" />
+                                  Mark Delivered
+                                </button>
+                              )
+                            ) : (
+                              <button
+                                onClick={() => setSellingItem(item)}
+                                disabled={item.quantityStocked === 0}
+                                className={`inline-flex items-center rounded-md px-2.5 py-1.5 text-sm font-semibold shadow-sm ring-1 ring-inset ${
+                                  item.quantityStocked > 0 
+                                    ? 'bg-white text-gray-900 ring-gray-300 hover:bg-gray-50' 
+                                    : 'bg-gray-50 text-gray-400 ring-gray-200 cursor-not-allowed'
+                                }`}
+                              >
+                                <CheckCircle2 className="-ml-0.5 mr-1.5 h-4 w-4 text-emerald-500" />
+                                Sell
+                              </button>
+                            )}
                             <button
                               onClick={() => handleEdit(item)}
-                              disabled={hasBeenSold}
-                              className={`p-2 ${hasBeenSold ? 'text-gray-300 cursor-not-allowed' : 'text-indigo-600 hover:text-indigo-900'}`}
-                              title={hasBeenSold ? "Cannot edit an item that has sales records" : "Edit item"}
+                              className="p-2 text-indigo-600 hover:text-indigo-900"
+                              title="Edit item"
                             >
                               <Edit2 className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleDelete(item.id)}
-                              disabled={hasBeenSold}
-                              className={`p-2 ${hasBeenSold ? 'text-gray-300 cursor-not-allowed' : 'text-red-600 hover:text-red-900'}`}
-                              title={hasBeenSold ? "Cannot delete an item that has sales records" : "Delete item"}
+                              className="p-2 text-red-600 hover:text-red-900"
+                              title="Delete item"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
@@ -235,6 +353,10 @@ export function Inventory() {
             setEditingItem(null);
           }}
         />
+      )}
+
+      {isBulkImportOpen && (
+        <BulkImport onClose={() => setIsBulkImportOpen(false)} />
       )}
 
       {/* Sell Modal */}

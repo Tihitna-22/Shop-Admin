@@ -32,3 +32,21 @@ export interface Sale {
   totalCostPriceETB: number; // Cost per item at time of sale
   dateSold: string;
 }
+
+export type ExpenseCategory = 'Rent' | 'Internet' | 'Packaging' | 'Transport' | 'Other';
+
+export interface Expense {
+  id: string;
+  userId: string;
+  description: string;
+  amountETB: number;
+  date: string;
+  category: ExpenseCategory;
+}
+
+export interface StoreSettings {
+  userId: string;
+  telegramBotToken?: string;
+  telegramChatId?: string;
+  autoPostToTelegram?: boolean;
+}

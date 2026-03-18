@@ -95,6 +95,8 @@ export function Inventory() {
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Cost (ETB)</th>
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Price (ETB)</th>
                     <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Profit</th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Total Price</th>
+                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Total Profit</th>
                     <th scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-6">
                       <span className="sr-only">Actions</span>
                     </th>
@@ -103,6 +105,8 @@ export function Inventory() {
                 <tbody className="divide-y divide-gray-200 bg-white">
                   {filteredInventory.map((item) => {
                     const profit = item.sellingPriceETB - item.totalCostPriceETB;
+                    const totalPrice = item.sellingPriceETB * item.quantityStocked;
+                    const totalProfit = profit * item.quantityStocked;
                     const hasBeenSold = sales.some(s => s.itemId === item.id);
                     return (
                       <tr key={item.id}>
@@ -149,6 +153,12 @@ export function Inventory() {
                         <td className={`whitespace-nowrap px-3 py-4 text-sm font-medium ${profit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                           {formatETB(profit)}
                         </td>
+                        <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900 font-medium">
+                          {formatETB(totalPrice)}
+                        </td>
+                        <td className={`whitespace-nowrap px-3 py-4 text-sm font-medium ${totalProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {formatETB(totalProfit)}
+                        </td>
                         <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                           <div className="flex justify-end gap-2">
                             <button
@@ -186,7 +196,7 @@ export function Inventory() {
                   })}
                   {inventory.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="py-12 text-center text-sm text-gray-500">
+                      <td colSpan={9} className="py-12 text-center text-sm text-gray-500">
                         No items in inventory. Click "Add Item" to get started.
                       </td>
                     </tr>

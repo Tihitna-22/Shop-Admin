@@ -11,8 +11,9 @@ interface ItemFormProps {
 }
 
 export function ItemForm({ item, onClose }: ItemFormProps) {
-  const { addItem, updateItem } = useInventory();
+  const { addItem, updateItem, settings } = useInventory();
   const [isCompressing, setIsCompressing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
@@ -62,8 +63,10 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
+    setError(null);
     
     const itemData = {
       ...formData,
@@ -77,12 +80,48 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
       totalCostPriceETB,
     };
 
-    if (item) {
-      updateItem(item.id, itemData);
-    } else {
-      addItem(itemData);
+    try {
+      if (item) {
+        await updateItem(item.id, itemData);
+      } else {
+        await addItem(itemData);
+        
+        // Post to Telegram if configured
+        if (settings?.autoPostToTelegram && settings?.telegramBotToken && settings?.telegramChatId) {
+          try {
+            const caption = `✨Available on hand\n✨Price- ${itemData.sellingPriceETB} ETB\n     Size - ${itemData.size}\n     Contact- @Mirafashion22`;
+            const tgFormData = new FormData();
+            tgFormData.append('chat_id', settings.telegramChatId);
+            tgFormData.append('caption', caption);
+
+            if (itemData.image) {
+              const res = await fetch(itemData.image);
+              const blob = await res.blob();
+              tgFormData.append('photo', blob, 'image.jpg');
+              
+              await fetch(`https://api.telegram.org/bot${settings.telegramBotToken}/sendPhoto`, {
+                method: 'POST',
+                body: tgFormData,
+              });
+            } else {
+              tgFormData.append('text', caption);
+              await fetch(`https://api.telegram.org/bot${settings.telegramBotToken}/sendMessage`, {
+                method: 'POST',
+                body: tgFormData,
+              });
+            }
+          } catch (tgError) {
+            console.error('Failed to post to Telegram:', tgError);
+          }
+        }
+      }
+      onClose();
+    } catch (err) {
+      console.error(err);
+      setError('Failed to save item.');
+    } finally {
+      setIsSubmitting(false);
     }
-    onClose();
   };
 
   return (
@@ -98,6 +137,15 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {error && (
+            <div className="rounded-md bg-red-50 p-4">
+              <div className="flex">
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-red-800">{error}</h3>
+                </div>
+              </div>
+            </div>
+          )}
           {error && (
             <div className="rounded-md bg-red-50 p-4">
               <div className="flex">
@@ -147,7 +195,7 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">SHEIN SKU</label>
+              <label className="block text-sm font-medium text-gray-700">Item SKU</label>
               <input
                 type="text"
                 name="sheinSku"
@@ -293,15 +341,17 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
             <button
               type="button"
               onClick={onClose}
-              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
+              disabled={isSubmitting}
+              className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="inline-flex justify-center rounded-md border border-transparent bg-black px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
+              disabled={isCompressing || isSubmitting}
+              className="inline-flex justify-center rounded-md border border-transparent bg-black px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {item ? 'Save Changes' : 'Add Item'}
+              {isSubmitting ? 'Saving...' : (item ? 'Save Changes' : 'Add Item')}
             </button>
           </div>
         </form>

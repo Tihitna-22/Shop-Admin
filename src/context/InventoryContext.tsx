@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { InventoryItem, Sale } from '../types';
+import { InventoryItem, Sale, Expense, StoreSettings } from '../types';
 import { db, auth } from '../firebase';
 import { collection, doc, setDoc, deleteDoc, updateDoc, onSnapshot, query, where } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -46,10 +46,15 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 interface InventoryContextType {
   inventory: InventoryItem[];
   sales: Sale[];
-  addItem: (item: Omit<InventoryItem, 'id' | 'userId' | 'dateAdded'>) => void;
-  updateItem: (id: string, item: Partial<InventoryItem>) => void;
-  deleteItem: (id: string) => void;
-  markAsSold: (id: string, quantity: number) => void;
+  expenses: Expense[];
+  settings: StoreSettings | null;
+  addItem: (item: Omit<InventoryItem, 'id' | 'userId' | 'dateAdded'>) => Promise<void>;
+  updateItem: (id: string, item: Partial<InventoryItem>) => Promise<void>;
+  deleteItem: (id: string) => Promise<void>;
+  markAsSold: (id: string, quantity: number) => Promise<void>;
+  addExpense: (expense: Omit<Expense, 'id' | 'userId' | 'date'>) => Promise<void>;
+  deleteExpense: (id: string) => Promise<void>;
+  updateSettings: (settings: Partial<StoreSettings>) => Promise<void>;
 }
 
 const InventoryContext = createContext<InventoryContextType | undefined>(undefined);
@@ -57,6 +62,8 @@ const InventoryContext = createContext<InventoryContextType | undefined>(undefin
 export function InventoryProvider({ children }: { children: ReactNode }) {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [settings, setSettings] = useState<StoreSettings | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -70,6 +77,8 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     if (!userId) {
       setInventory([]);
       setSales([]);
+      setExpenses([]);
+      setSettings(null);
       return;
     }
 
@@ -95,9 +104,33 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       handleFirestoreError(error, OperationType.LIST, 'sales');
     });
 
+    const expensesQuery = query(collection(db, 'expenses'), where('userId', '==', userId));
+    const unsubscribeExpenses = onSnapshot(expensesQuery, (snapshot) => {
+      const e: Expense[] = [];
+      snapshot.forEach((doc) => {
+        e.push({ id: doc.id, ...doc.data() } as Expense);
+      });
+      setExpenses(e);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'expenses');
+    });
+
+    const settingsDoc = doc(db, 'settings', userId);
+    const unsubscribeSettings = onSnapshot(settingsDoc, (docSnap) => {
+      if (docSnap.exists()) {
+        setSettings(docSnap.data() as StoreSettings);
+      } else {
+        setSettings({ userId });
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `settings/${userId}`);
+    });
+
     return () => {
       unsubscribeInventory();
       unsubscribeSales();
+      unsubscribeExpenses();
+      unsubscribeSettings();
     };
   }, [userId]);
 
@@ -168,9 +201,43 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const addExpense = async (expenseData: Omit<Expense, 'id' | 'userId' | 'date'>) => {
+    if (!userId) return;
+    const id = Math.random().toString(36).substring(2, 9);
+    const newExpense: Expense = {
+      ...expenseData,
+      id,
+      userId,
+      date: new Date().toISOString(),
+    };
+    try {
+      await setDoc(doc(db, 'expenses', id), newExpense);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `expenses/${id}`);
+    }
+  };
+
+  const deleteExpense = async (id: string) => {
+    if (!userId) return;
+    try {
+      await deleteDoc(doc(db, 'expenses', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `expenses/${id}`);
+    }
+  };
+
+  const updateSettings = async (newSettings: Partial<StoreSettings>) => {
+    if (!userId) return;
+    try {
+      await setDoc(doc(db, 'settings', userId), { ...settings, ...newSettings, userId }, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `settings/${userId}`);
+    }
+  };
+
   return (
     <InventoryContext.Provider
-      value={{ inventory, sales, addItem, updateItem, deleteItem, markAsSold }}
+      value={{ inventory, sales, expenses, settings, addItem, updateItem, deleteItem, markAsSold, addExpense, deleteExpense, updateSettings }}
     >
       {children}
     </InventoryContext.Provider>

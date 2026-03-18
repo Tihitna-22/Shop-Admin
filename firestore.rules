@@ -38,6 +38,23 @@ service cloud.firestore {
     //   - totalCostPriceETB: number (required)
     //   - dateSold: string (required)
     //
+    // Collection: expenses
+    // Document ID: auto-generated
+    // Fields:
+    //   - userId: string (required) - Owner UID
+    //   - description: string (required)
+    //   - amountETB: number (required)
+    //   - date: string (required)
+    //   - category: string (required, enum)
+    //
+    // Collection: settings
+    // Document ID: userId
+    // Fields:
+    //   - userId: string (required)
+    //   - telegramBotToken: string (optional)
+    //   - telegramChatId: string (optional)
+    //   - autoPostToTelegram: bool (optional)
+    //
     // ===============================================================
 
     // ===============================================================
@@ -104,8 +121,25 @@ service cloud.firestore {
              isValidDateString(data.dateSold);
     }
 
+    function isValidExpense(data) {
+      return hasRequiredFields(['userId', 'description', 'amountETB', 'date', 'category']) &&
+             data.userId is string &&
+             data.description is string && data.description.size() > 0 && data.description.size() < 500 &&
+             data.amountETB is number && data.amountETB >= 0 &&
+             data.category in ['Rent', 'Internet', 'Packaging', 'Transport', 'Other'] &&
+             isValidDateString(data.date);
+    }
+
+    function isValidSettings(data) {
+      return hasRequiredFields(['userId']) &&
+             data.userId is string &&
+             (!('telegramBotToken' in data) || (data.telegramBotToken is string && data.telegramBotToken.size() < 200)) &&
+             (!('telegramChatId' in data) || (data.telegramChatId is string && data.telegramChatId.size() < 200)) &&
+             (!('autoPostToTelegram' in data) || data.autoPostToTelegram is bool);
+    }
+
     match /inventory/{itemId} {
-      allow read: if isDocOwner();
+      allow read: if true;
       allow create: if isAuthenticated() && isValidInventoryItem(request.resource.data) && uidUnchanged();
       allow update: if isDocOwner() && isValidInventoryItem(request.resource.data) && uidNotModified();
       allow delete: if isDocOwner();
@@ -116,6 +150,19 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isValidSale(request.resource.data) && uidUnchanged();
       allow update: if isDocOwner() && isValidSale(request.resource.data) && uidNotModified();
       allow delete: if isDocOwner();
+    }
+
+    match /expenses/{expenseId} {
+      allow read: if isDocOwner();
+      allow create: if isAuthenticated() && isValidExpense(request.resource.data) && uidUnchanged();
+      allow update: if isDocOwner() && isValidExpense(request.resource.data) && uidNotModified();
+      allow delete: if isDocOwner();
+    }
+
+    match /settings/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidSettings(request.resource.data);
+      allow update: if isOwner(userId) && isValidSettings(request.resource.data);
     }
   }
 }

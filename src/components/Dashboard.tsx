@@ -1,23 +1,26 @@
 import React, { useState } from 'react';
 import { useInventory } from '../context/InventoryContext';
 import { formatETB } from '../lib/formatters';
-import { isToday, isThisMonth, parseISO } from 'date-fns';
-import { TrendingUp, TrendingDown, DollarSign, Package, ShoppingCart } from 'lucide-react';
+import { isThisMonth, parseISO, isSameDay, format } from 'date-fns';
+import { TrendingUp, TrendingDown, DollarSign, Package, ShoppingCart, Receipt, Calendar, Image as ImageIcon } from 'lucide-react';
 
 export function Dashboard() {
-  const { inventory, sales } = useInventory();
+  const { inventory, sales, expenses } = useInventory();
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
-  // Calculate Daily Profit
-  const todaySales = sales.filter((sale) => isToday(parseISO(sale.dateSold)));
-  const dailyRevenue = todaySales.reduce((sum, sale) => sum + (sale.sellingPriceETB * sale.quantitySold), 0);
-  const dailyCost = todaySales.reduce((sum, sale) => sum + (sale.totalCostPriceETB * sale.quantitySold), 0);
+  // Calculate Selected Day Profit
+  const selectedDaySales = sales.filter((sale) => isSameDay(parseISO(sale.dateSold), selectedDate));
+  const dailyRevenue = selectedDaySales.reduce((sum, sale) => sum + (sale.sellingPriceETB * sale.quantitySold), 0);
+  const dailyCost = selectedDaySales.reduce((sum, sale) => sum + (sale.totalCostPriceETB * sale.quantitySold), 0);
   const dailyProfit = dailyRevenue - dailyCost;
 
   // Calculate Monthly Profit
   const monthSales = sales.filter((sale) => isThisMonth(parseISO(sale.dateSold)));
+  const monthExpenses = expenses.filter((exp) => isThisMonth(parseISO(exp.date)));
   const monthlyRevenue = monthSales.reduce((sum, sale) => sum + (sale.sellingPriceETB * sale.quantitySold), 0);
   const monthlyCost = monthSales.reduce((sum, sale) => sum + (sale.totalCostPriceETB * sale.quantitySold), 0);
-  const monthlyProfit = monthlyRevenue - monthlyCost;
+  const monthlyExpenseTotal = monthExpenses.reduce((sum, exp) => sum + exp.amountETB, 0);
+  const monthlyProfit = monthlyRevenue - monthlyCost - monthlyExpenseTotal;
 
   // Calculate Total Inventory Value
   const totalInventoryValue = inventory.reduce((sum, item) => sum + (item.totalCostPriceETB * item.quantityStocked), 0);
@@ -33,7 +36,23 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold tracking-tight text-gray-900">Financial Analytics</h2>
+      <div className="sm:flex sm:items-center sm:justify-between">
+        <h2 className="text-2xl font-bold tracking-tight text-gray-900">Financial Analytics</h2>
+        <div className="mt-4 sm:mt-0 flex items-center gap-2">
+          <Calendar className="h-5 w-5 text-gray-500" />
+          <input
+            type="date"
+            value={format(selectedDate, 'yyyy-MM-dd')}
+            onChange={(e) => {
+              const newDate = new Date(e.target.value);
+              if (!isNaN(newDate.getTime())) {
+                setSelectedDate(newDate);
+              }
+            }}
+            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          />
+        </div>
+      </div>
       
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {/* Daily Profit Card */}
@@ -43,7 +62,7 @@ export function Dashboard() {
               {dailyProfit >= 0 ? <TrendingUp className="h-6 w-6" /> : <TrendingDown className="h-6 w-6" />}
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500">Daily Profit</p>
+              <p className="text-sm font-medium text-gray-500">Profit on {format(selectedDate, 'MMM d')}</p>
               <p className={`text-2xl font-semibold tracking-tight ${dailyProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                 {formatETB(dailyProfit)}
               </p>
@@ -61,14 +80,15 @@ export function Dashboard() {
               {monthlyProfit >= 0 ? <TrendingUp className="h-6 w-6" /> : <TrendingDown className="h-6 w-6" />}
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500">Monthly Profit</p>
+              <p className="text-sm font-medium text-gray-500">Net Monthly Profit</p>
               <p className={`text-2xl font-semibold tracking-tight ${monthlyProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                 {formatETB(monthlyProfit)}
               </p>
             </div>
           </div>
-          <div className="mt-4 text-sm text-gray-500">
-            Revenue: {formatETB(monthlyRevenue)}
+          <div className="mt-4 text-sm text-gray-500 flex justify-between">
+            <span>Rev: {formatETB(monthlyRevenue)}</span>
+            <span className="text-red-500">Exp: {formatETB(monthlyExpenseTotal)}</span>
           </div>
         </div>
 
@@ -126,28 +146,43 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Recent Sales Table */}
+      {/* Activities Table */}
       <div className="mt-8">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Recent Sales</h3>
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Activities on {format(selectedDate, 'MMMM d, yyyy')}</h3>
         <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-900/5">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">Item</th>
+                  <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">Photo</th>
+                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Item</th>
                   <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">SKU</th>
                   <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Qty</th>
                   <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Sale Price</th>
                   <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Profit</th>
-                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Date</th>
+                  <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Time</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
-                {sales.slice().reverse().slice(0, 10).map((sale) => {
+                {selectedDaySales.slice().reverse().map((sale) => {
                   const profit = (sale.sellingPriceETB - sale.totalCostPriceETB) * sale.quantitySold;
+                  const item = inventory.find(i => i.id === sale.itemId);
                   return (
                     <tr key={sale.id}>
-                      <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">{sale.itemName}</td>
+                      <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm sm:pl-6">
+                        {item?.image ? (
+                          <img
+                            src={item.image}
+                            alt={sale.itemName}
+                            className="h-[50px] w-[50px] rounded-md object-cover border border-gray-200"
+                          />
+                        ) : (
+                          <div className="flex h-[50px] w-[50px] items-center justify-center rounded-md bg-gray-50 border border-gray-200">
+                            <ImageIcon className="h-6 w-6 text-gray-300" />
+                          </div>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-sm font-medium text-gray-900">{sale.itemName}</td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{sale.sheinSku}</td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{sale.quantitySold}</td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{formatETB(sale.sellingPriceETB)}</td>
@@ -155,15 +190,15 @@ export function Dashboard() {
                         {formatETB(profit)}
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                        {new Date(sale.dateSold).toLocaleDateString()}
+                        {new Date(sale.dateSold).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </td>
                     </tr>
                   );
                 })}
-                {sales.length === 0 && (
+                {selectedDaySales.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-sm text-gray-500">
-                      No sales recorded yet.
+                    <td colSpan={7} className="py-8 text-center text-sm text-gray-500">
+                      No activities recorded on this day.
                     </td>
                   </tr>
                 )}

@@ -53,7 +53,22 @@ service cloud.firestore {
     //   - userId: string (required)
     //   - telegramBotToken: string (optional)
     //   - telegramChatId: string (optional)
+    //   - personalTelegramChatId: string (optional)
     //   - autoPostToTelegram: bool (optional)
+    //
+    // Collection: customers
+    // Document ID: auto-generated or tg_{id}
+    // Fields:
+    //   - userId: string (required)
+    //   - name: string (required)
+    //   - email: string (optional)
+    //   - phone: string (optional)
+    //   - telegram: string (optional)
+    //   - telegramChatId: string (optional)
+    //   - totalSpend: number (required)
+    //   - points: number (required)
+    //   - vipStatus: string (required, enum)
+    //   - createdAt: string (required)
     //
     // ===============================================================
 
@@ -105,7 +120,7 @@ service cloud.firestore {
              data.totalCostPriceETB is number && data.totalCostPriceETB >= 0 &&
              data.sellingPriceETB is number && data.sellingPriceETB >= 0 &&
              isValidDateString(data.dateAdded) &&
-             (!('image' in data) || (data.image is string && data.image.size() < 1048576)); // 1MB limit
+             (!('image' in data) || data.image == null || (data.image is string && data.image.size() < 1048576)); // 1MB limit or null
     }
 
     function isValidSale(data) {
@@ -135,34 +150,118 @@ service cloud.firestore {
              data.userId is string &&
              (!('telegramBotToken' in data) || (data.telegramBotToken is string && data.telegramBotToken.size() < 200)) &&
              (!('telegramChatId' in data) || (data.telegramChatId is string && data.telegramChatId.size() < 200)) &&
+             (!('personalTelegramChatId' in data) || (data.personalTelegramChatId is string && data.personalTelegramChatId.size() < 200)) &&
              (!('autoPostToTelegram' in data) || data.autoPostToTelegram is bool);
     }
 
+    function isValidCustomer(data) {
+      return hasRequiredFields(['userId', 'name', 'totalSpend', 'points', 'vipStatus', 'createdAt']) &&
+             data.userId is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             (!('email' in data) || (data.email is string && data.email.size() < 100)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() < 20)) &&
+             (!('telegram' in data) || (data.telegram is string && data.telegram.size() < 50)) &&
+             (!('telegramChatId' in data) || (data.telegramChatId is string && data.telegramChatId.size() < 50)) &&
+             data.totalSpend is number && data.totalSpend >= 0 &&
+             data.points is number && data.points >= 0 &&
+             data.vipStatus in ['none', 'bronze', 'silver', 'gold'] &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin' ||
+         (request.auth.token.email == "tihitna222sisay@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isAdmin() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return isAuthenticated() && userDoc.exists && userDoc.data.role == 'admin';
+    }
+
+    function getUserData() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return userDoc.exists ? userDoc.data : {};
+    }
+
+    function hasBusinessAccess(businessId) {
+      let userData = getUserData();
+      return isSuperAdmin() || isAdmin() || (userData.businessId == businessId) || (request.auth.uid == businessId);
+    }
+
+    function canAccessDoc(docData) {
+      return isSuperAdmin() || isAdmin() || hasBusinessAccess(docData.userId);
+    }
+
+    function isStockDecrement(incoming, existing) {
+      return incoming.quantityStocked <= existing.quantityStocked &&
+             incoming.sellingPriceETB == existing.sellingPriceETB &&
+             incoming.buyingPriceUSD == existing.buyingPriceUSD &&
+             incoming.itemName == existing.itemName &&
+             incoming.sheinSku == existing.sheinSku &&
+             incoming.userId == existing.userId;
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isSuperAdmin() || isOwner(userId) || isAdmin();
+    }
+
+    match /businesses/{businessId} {
+      allow read: if isAuthenticated();
+      allow write: if isSuperAdmin();
+    }
+
     match /inventory/{itemId} {
-      allow read: if true;
-      allow create: if isAuthenticated() && isValidInventoryItem(request.resource.data) && uidUnchanged();
-      allow update: if isDocOwner() && isValidInventoryItem(request.resource.data) && uidNotModified();
-      allow delete: if isDocOwner();
+      allow get: if true;
+      allow list: if true;
+      allow create: if (isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(request.resource.data.userId)) && isValidInventoryItem(request.resource.data)) || 
+                       (request.resource.data.status == 'ordered' && isValidInventoryItem(request.resource.data));
+      allow update: if (isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId)) && isValidInventoryItem(request.resource.data)) || 
+                       (isStockDecrement(request.resource.data, resource.data) && isValidInventoryItem(request.resource.data));
+      allow delete: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId));
     }
 
     match /sales/{saleId} {
-      allow read: if isDocOwner();
-      allow create: if isAuthenticated() && isValidSale(request.resource.data) && uidUnchanged();
-      allow update: if isDocOwner() && isValidSale(request.resource.data) && uidNotModified();
-      allow delete: if isDocOwner();
+      allow get: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId));
+      allow list: if isAuthenticated();
+      allow create: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(request.resource.data.userId)) && isValidSale(request.resource.data);
+      allow update: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId)) && isValidSale(request.resource.data);
+      allow delete: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId));
     }
 
     match /expenses/{expenseId} {
-      allow read: if isDocOwner();
-      allow create: if isAuthenticated() && isValidExpense(request.resource.data) && uidUnchanged();
-      allow update: if isDocOwner() && isValidExpense(request.resource.data) && uidNotModified();
-      allow delete: if isDocOwner();
+      allow get: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId));
+      allow list: if isAuthenticated();
+      allow create: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(request.resource.data.userId)) && isValidExpense(request.resource.data);
+      allow update: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId)) && isValidExpense(request.resource.data);
+      allow delete: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId));
     }
 
     match /settings/{userId} {
-      allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && isValidSettings(request.resource.data);
-      allow update: if isOwner(userId) && isValidSettings(request.resource.data);
+      allow get: if isAuthenticated();
+      allow list: if isAuthenticated();
+      allow write: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(userId)) && isValidSettings(request.resource.data);
+    }
+
+    match /public_profiles/{userId} {
+      allow read: if true;
+      allow write: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(userId));
+    }
+
+    match /customers/{customerId} {
+      allow get: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId));
+      allow list: if isAuthenticated();
+      allow create: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(request.resource.data.userId)) && isValidCustomer(request.resource.data);
+      allow update: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId)) && isValidCustomer(request.resource.data);
+      allow delete: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId));
+    }
+
+    match /discount_codes/{discountCodeId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(request.resource.data.userId));
+      allow update, delete: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId));
     }
   }
 }

@@ -4,21 +4,33 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { InventoryProvider } from './context/InventoryContext';
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
+import { InventoryProvider, useInventory } from './context/InventoryContext';
 import { Dashboard } from './components/Dashboard';
 import { Inventory } from './components/Inventory';
+import { Orders } from './components/Orders';
 import { Expenses } from './components/Expenses';
 import { Storefront } from './components/Storefront';
 import { Settings } from './components/Settings';
-import { LayoutDashboard, PackageSearch, LogOut, Receipt, Settings as SettingsIcon } from 'lucide-react';
+import { Auth } from './components/Auth';
+import { SetPassword } from './components/SetPassword';
+import { Reports } from './components/Reports';
+import { Customers } from './components/Customers';
+import { DiscountCodes } from './components/DiscountCodes';
+import { Marketing } from './components/Marketing';
+import { SuperadminDashboard } from './components/SuperadminDashboard';
+import { AdminStaffManagement } from './components/AdminStaffManagement';
+import { LayoutDashboard, PackageSearch, LogOut, Receipt, Settings as SettingsIcon, ShoppingCart, BarChart3, Store, Users, Tag, Megaphone, ShieldAlert, Users2 } from 'lucide-react';
 import { auth } from './firebase';
-import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 function AdminLayout() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'inventory' | 'expenses' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'inventory' | 'orders' | 'expenditure' | 'reports' | 'customers' | 'discountCodes' | 'marketing' | 'settings' | 'superadmin' | 'staff'>('dashboard');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { settings, userProfile, switchRole, loading: inventoryLoading, userId } = useInventory();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [passwordRequiredUid, setPasswordRequiredUid] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -28,194 +40,255 @@ function AdminLayout() {
     return () => unsubscribe();
   }, []);
 
-  const handleLogin = async () => {
-    const provider = new GoogleAuthProvider();
-    try {
-      await signInWithPopup(auth, provider);
-    } catch (error) {
-      console.error("Error signing in:", error);
-    }
-  };
-
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      setPasswordRequiredUid(null);
     } catch (error) {
       console.error("Error signing out:", error);
     }
   };
 
-  if (loading) {
+  useEffect(() => {
+    if (settings?.shopName) {
+      document.title = `${settings.shopName} - Admin Portal`;
+    } else {
+      document.title = 'Fashion Platform Admin';
+    }
+  }, [settings?.shopName]);
+
+  if (loading || inventoryLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+          <p className="text-sm text-gray-500 font-serif italic">Loading portal...</p>
+        </div>
       </div>
     );
   }
 
   if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-2xl shadow-xl text-center">
-          <div>
-            <h2 className="mt-6 text-3xl font-extrabold text-gray-900">Mira Fashion Admin</h2>
-            <p className="mt-2 text-sm text-gray-600">
-              Sign in to manage your inventory and sales.
-            </p>
-          </div>
-          <button
-            onClick={handleLogin}
-            className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors"
-          >
-            Sign in with Google
-          </button>
-        </div>
-      </div>
-    );
+    if (passwordRequiredUid) {
+      return <SetPassword uid={passwordRequiredUid} onComplete={() => setPasswordRequiredUid(null)} />;
+    }
+    return <Auth onSetPasswordRequired={setPasswordRequiredUid} />;
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Navigation */}
-      <nav className="bg-white shadow-sm border-b border-gray-200">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 justify-between">
-            <div className="flex">
-              <div className="flex flex-shrink-0 items-center">
-                <span className="text-xl font-bold tracking-tight text-gray-900">Mira Fashion Admin</span>
-              </div>
-              <div className="hidden sm:-my-px sm:ml-6 sm:flex sm:space-x-8">
-                <button
-                  onClick={() => setActiveTab('dashboard')}
-                  className={`inline-flex items-center border-b-2 px-1 pt-1 text-sm font-medium ${
-                    activeTab === 'dashboard'
-                      ? 'border-black text-gray-900'
-                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                  }`}
-                >
-                  <LayoutDashboard className="mr-2 h-4 w-4" />
-                  Dashboard
-                </button>
-                <button
-                  onClick={() => setActiveTab('inventory')}
-                  className={`inline-flex items-center border-b-2 px-1 pt-1 text-sm font-medium ${
-                    activeTab === 'inventory'
-                      ? 'border-black text-gray-900'
-                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                  }`}
-                >
-                  <PackageSearch className="mr-2 h-4 w-4" />
-                  Inventory
-                </button>
-                <button
-                  onClick={() => setActiveTab('expenses')}
-                  className={`inline-flex items-center border-b-2 px-1 pt-1 text-sm font-medium ${
-                    activeTab === 'expenses'
-                      ? 'border-black text-gray-900'
-                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                  }`}
-                >
-                  <Receipt className="mr-2 h-4 w-4" />
-                  Expenses
-                </button>
-                <button
-                  onClick={() => setActiveTab('settings')}
-                  className={`inline-flex items-center border-b-2 px-1 pt-1 text-sm font-medium ${
-                    activeTab === 'settings'
-                      ? 'border-black text-gray-900'
-                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                  }`}
-                >
-                  <SettingsIcon className="mr-2 h-4 w-4" />
-                  Settings
-                </button>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <a
-                href="/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors"
-              >
-                View as Customer
-              </a>
-              <button
-                onClick={handleLogout}
-                className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-              >
-                <LogOut className="mr-2 h-4 w-4" />
-                Sign Out
-              </button>
-            </div>
-          </div>
+  const NavContent = () => (
+    <>
+      <div className="p-6 flex items-center gap-3">
+        <div className="h-10 w-10 rounded-full bg-[#a94442] flex items-center justify-center text-white font-serif text-xl">
+          {settings?.shopName ? settings.shopName.charAt(0).toUpperCase() : 'M'}
         </div>
+        <div>
+          <h1 className="font-serif font-semibold text-gray-900 text-lg leading-tight">{settings?.shopName || 'Mira Fashion'}</h1>
+          <p className="text-xs text-gray-500">Admin Portal</p>
+        </div>
+      </div>
 
-        {/* Mobile menu */}
-        <div className="sm:hidden border-t border-gray-200">
-          <div className="space-y-1 pb-3 pt-2">
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`block w-full border-l-4 py-2 pl-3 pr-4 text-left text-base font-medium ${
-                activeTab === 'dashboard'
-                  ? 'border-black bg-gray-50 text-black'
-                  : 'border-transparent text-gray-600 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-800'
-              }`}
-            >
-              <div className="flex items-center">
-                <LayoutDashboard className="mr-3 h-5 w-5" />
-                Dashboard
-              </div>
-            </button>
-            <button
-              onClick={() => setActiveTab('inventory')}
-              className={`block w-full border-l-4 py-2 pl-3 pr-4 text-left text-base font-medium ${
-                activeTab === 'inventory'
-                  ? 'border-black bg-gray-50 text-black'
-                  : 'border-transparent text-gray-600 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-800'
-              }`}
-            >
-              <div className="flex items-center">
-                <PackageSearch className="mr-3 h-5 w-5" />
-                Inventory
-              </div>
-            </button>
-            <button
-              onClick={() => setActiveTab('expenses')}
-              className={`block w-full border-l-4 py-2 pl-3 pr-4 text-left text-base font-medium ${
-                activeTab === 'expenses'
-                  ? 'border-black bg-gray-50 text-black'
-                  : 'border-transparent text-gray-600 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-800'
-              }`}
-            >
-              <div className="flex items-center">
-                <Receipt className="mr-3 h-5 w-5" />
-                Expenses
-              </div>
-            </button>
-            <button
-              onClick={() => setActiveTab('settings')}
-              className={`block w-full border-l-4 py-2 pl-3 pr-4 text-left text-base font-medium ${
-                activeTab === 'settings'
-                  ? 'border-black bg-gray-50 text-black'
-                  : 'border-transparent text-gray-600 hover:border-gray-300 hover:bg-gray-50 hover:text-gray-800'
-              }`}
-            >
-              <div className="flex items-center">
-                <SettingsIcon className="mr-3 h-5 w-5" />
-                Settings
-              </div>
-            </button>
-          </div>
-        </div>
+      <nav className="flex-1 px-4 space-y-1 mt-4">
+        {userProfile?.role === 'superadmin' && (
+          <button
+            onClick={() => { setActiveTab('superadmin'); setIsMobileMenuOpen(false); }}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === 'superadmin'
+                ? 'bg-indigo-600 text-white'
+                : 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100'
+            }`}
+          >
+            <ShieldAlert className="h-5 w-5" />
+            Superadmin Panel
+          </button>
+        )}
+        
+        {userProfile?.role === 'admin' && (
+          <button
+            onClick={() => { setActiveTab('staff'); setIsMobileMenuOpen(false); }}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === 'staff'
+                ? 'bg-[#a94442] text-white'
+                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+            }`}
+          >
+            <Users2 className="h-5 w-5" />
+            Staff Management
+          </button>
+        )}
+
+        <button
+          onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'dashboard'
+              ? 'bg-[#a94442] text-white'
+              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+          }`}
+        >
+          <LayoutDashboard className="h-5 w-5" />
+          Dashboard
+        </button>
+        <button
+          onClick={() => { setActiveTab('inventory'); setIsMobileMenuOpen(false); }}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'inventory'
+              ? 'bg-[#a94442] text-white'
+              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+          }`}
+        >
+          <PackageSearch className="h-5 w-5" />
+          Inventory
+        </button>
+        <button
+          onClick={() => { setActiveTab('orders'); setIsMobileMenuOpen(false); }}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'orders'
+              ? 'bg-[#a94442] text-white'
+              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+          }`}
+        >
+          <ShoppingCart className="h-5 w-5" />
+          Orders
+        </button>
+        {(userProfile?.role === 'admin' || userProfile?.role === 'superadmin') && (
+          <button
+            onClick={() => { setActiveTab('expenditure'); setIsMobileMenuOpen(false); }}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === 'expenditure'
+                ? 'bg-[#a94442] text-white'
+                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+            }`}
+          >
+            <Receipt className="h-5 w-5" />
+            Expenditure
+          </button>
+        )}
+        {(userProfile?.role === 'admin' || userProfile?.role === 'superadmin') && (
+          <button
+            onClick={() => { setActiveTab('reports'); setIsMobileMenuOpen(false); }}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === 'reports'
+                ? 'bg-[#a94442] text-white'
+                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+            }`}
+          >
+            <BarChart3 className="h-5 w-5" />
+            Reports
+          </button>
+        )}
+        <button
+          onClick={() => { setActiveTab('customers'); setIsMobileMenuOpen(false); }}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'customers'
+              ? 'bg-[#a94442] text-white'
+              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+          }`}
+        >
+          <Users className="h-5 w-5" />
+          Customers
+        </button>
+        <button
+          onClick={() => { setActiveTab('discountCodes'); setIsMobileMenuOpen(false); }}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'discountCodes'
+              ? 'bg-[#a94442] text-white'
+              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+          }`}
+        >
+          <Tag className="h-5 w-5" />
+          Discount Codes
+        </button>
+        <button
+          onClick={() => { setActiveTab('marketing'); setIsMobileMenuOpen(false); }}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'marketing'
+              ? 'bg-[#a94442] text-white'
+              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+          }`}
+        >
+          <Megaphone className="h-5 w-5" />
+          Marketing
+        </button>
+        <button
+          onClick={() => { setActiveTab('settings'); setIsMobileMenuOpen(false); }}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+            activeTab === 'settings'
+              ? 'bg-[#a94442] text-white'
+              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+          }`}
+        >
+          <SettingsIcon className="h-5 w-5" />
+          Settings
+        </button>
       </nav>
 
+      <div className="p-4 border-t border-gray-200 space-y-4">
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+        >
+          <LogOut className="h-5 w-5" />
+          Sign Out
+        </button>
+
+        <Link
+          to={`/shop/${userId}`}
+          target="_blank"
+          className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-black transition-colors"
+        >
+          <Store className="h-4 w-4" />
+          View Storefront
+        </Link>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="min-h-screen bg-[#f8f9fa] flex">
+      {/* Mobile Menu Overlay */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-40 sm:hidden">
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setIsMobileMenuOpen(false)}></div>
+          <div className="fixed inset-y-0 left-0 flex w-64 flex-col bg-white shadow-xl">
+            <NavContent />
+          </div>
+        </div>
+      )}
+
+      {/* Desktop Sidebar */}
+      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col hidden sm:flex">
+        <NavContent />
+      </aside>
+
       {/* Main Content */}
-      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-        {activeTab === 'dashboard' && <Dashboard />}
-        {activeTab === 'inventory' && <Inventory />}
-        {activeTab === 'expenses' && <Expenses />}
-        {activeTab === 'settings' && <Settings />}
+      <main className="flex-1 overflow-y-auto">
+        <div className="sm:hidden p-4 border-b border-gray-200 bg-white flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-8 rounded-full bg-[#a94442] flex items-center justify-center text-white font-serif text-lg">
+              {settings?.shopName ? settings.shopName.charAt(0).toUpperCase() : 'M'}
+            </div>
+            <h1 className="font-serif font-semibold text-gray-900">{settings?.shopName || 'Mira Fashion'}</h1>
+          </div>
+          <button onClick={() => setIsMobileMenuOpen(true)} className="p-2 text-gray-500 hover:bg-gray-100 rounded-md">
+            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-4 sm:p-8">
+          {activeTab === 'superadmin' && userProfile?.role === 'superadmin' && <SuperadminDashboard />}
+          {activeTab === 'staff' && userProfile?.role === 'admin' && <AdminStaffManagement />}
+          {activeTab === 'dashboard' && <Dashboard />}
+          {activeTab === 'inventory' && <Inventory />}
+          {activeTab === 'orders' && <Orders />}
+          {activeTab === 'expenditure' && (userProfile?.role === 'admin' || userProfile?.role === 'superadmin') && <Expenses />}
+          {activeTab === 'expenditure' && userProfile?.role !== 'admin' && userProfile?.role !== 'superadmin' && <div className="p-8 text-center text-gray-500">You do not have permission to view this page.</div>}
+          {activeTab === 'reports' && (userProfile?.role === 'admin' || userProfile?.role === 'superadmin') && <Reports />}
+          {activeTab === 'reports' && userProfile?.role !== 'admin' && userProfile?.role !== 'superadmin' && <div className="p-8 text-center text-gray-500">You do not have permission to view this report.</div>}
+          {activeTab === 'customers' && <Customers />}
+          {activeTab === 'discountCodes' && <DiscountCodes />}
+          {activeTab === 'marketing' && <Marketing />}
+          {activeTab === 'settings' && <Settings />}
+        </div>
       </main>
     </div>
   );
@@ -224,15 +297,14 @@ function AdminLayout() {
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Storefront />} />
-        <Route path="/admin" element={
-          <InventoryProvider>
-            <AdminLayout />
-          </InventoryProvider>
-        } />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <InventoryProvider>
+        <Routes>
+          <Route path="/" element={<Storefront />} />
+          <Route path="/shop/:shopId" element={<Storefront />} />
+          <Route path="/admin" element={<AdminLayout />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </InventoryProvider>
     </BrowserRouter>
   );
 }

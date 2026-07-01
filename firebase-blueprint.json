@@ -119,6 +119,80 @@
         "dateSold"
       ]
     },
+    "Customer": {
+      "title": "Customer",
+      "description": "A customer profile.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        },
+        "telegram": {
+          "type": "string"
+        },
+        "telegramChatId": {
+          "type": "string"
+        },
+        "totalSpend": {
+          "type": "number"
+        },
+        "points": {
+          "type": "number"
+        },
+        "vipStatus": {
+          "type": "string",
+          "enum": ["none", "bronze", "silver", "gold"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId", "name", "totalSpend", "points", "vipStatus", "createdAt"]
+    },
+    "DiscountCode": {
+      "title": "DiscountCode",
+      "description": "A discount code.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "discountType": {
+          "type": "string",
+          "enum": ["percentage", "fixed"]
+        },
+        "discountValue": {
+          "type": "number"
+        },
+        "isActive": {
+          "type": "boolean"
+        },
+        "maxUses": {
+          "type": "number"
+        },
+        "currentUses": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId", "code", "discountType", "discountValue", "isActive", "currentUses", "createdAt"]
+    },
     "StoreSettings": {
       "title": "StoreSettings",
       "description": "User settings for the store.",
@@ -138,9 +212,43 @@
         }
       },
       "required": ["userId"]
+    },
+    "Business": {
+      "title": "Business",
+      "description": "A business entity.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "name", "ownerUid", "createdAt", "isActive"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile and role.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["superadmin", "admin", "editor", "seller"] },
+        "displayName": { "type": "string" },
+        "businessId": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
     }
   },
   "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles."
+    },
+    "/businesses/{businessId}": {
+      "schema": { "$ref": "#/entities/Business" },
+      "description": "Business entities."
+    },
     "/inventory/{itemId}": {
       "schema": {
         "$ref": "#/entities/InventoryItem"
@@ -158,6 +266,18 @@
         "$ref": "#/entities/StoreSettings"
       },
       "description": "User settings."
+    },
+    "/customers/{customerId}": {
+      "schema": {
+        "$ref": "#/entities/Customer"
+      },
+      "description": "Customer profiles."
+    },
+    "/discount_codes/{discountCodeId}": {
+      "schema": {
+        "$ref": "#/entities/DiscountCode"
+      },
+      "description": "Discount codes."
     }
   }
 }

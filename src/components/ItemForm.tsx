@@ -1,21 +1,38 @@
 import React, { useState } from 'react';
 import { useInventory } from '../context/InventoryContext';
-import { Category, Size, InventoryItem } from '../types';
+import { Category, Size, InventoryItem, ProductVariant } from '../types';
 import { calculateTotalCost } from '../lib/formatters';
 import { compressImage } from '../lib/utils';
-import { X, Upload } from 'lucide-react';
+import { X, Upload, Plus, Trash2 } from 'lucide-react';
 
 interface ItemFormProps {
   item?: InventoryItem;
   onClose: () => void;
+  defaultStatus?: 'in_stock' | 'ordered';
 }
 
-export function ItemForm({ item, onClose }: ItemFormProps) {
-  const { addItem, updateItem, settings } = useInventory();
+export function ItemForm({ item, onClose, defaultStatus }: ItemFormProps) {
+  const { addItem, updateItem, settings, userId } = useInventory();
+  console.log('ItemForm: Current userId from context:', userId);
   const [isCompressing, setIsCompressing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [postToTelegram, setPostToTelegram] = useState(false);
+  const [variants, setVariants] = useState<ProductVariant[]>(item?.variants || []);
+
+  const addVariant = () => {
+    setVariants([...variants, { size: 'M', quantity: 1 }]);
+  };
+
+  const removeVariant = (index: number) => {
+    setVariants(variants.filter((_, i) => i !== index));
+  };
+
+  const handleVariantChange = (index: number, field: keyof ProductVariant, value: any) => {
+    const newVariants = [...variants];
+    newVariants[index] = { ...newVariants[index], [field]: value };
+    setVariants(newVariants);
+  };
 
   React.useEffect(() => {
     if (!item && settings?.autoPostToTelegram) {
@@ -36,10 +53,11 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
     localDeliveryFeeETB: item?.localDeliveryFeeETB?.toString() ?? '',
     sellingPriceETB: item?.sellingPriceETB?.toString() ?? '',
     image: item?.image || '',
-    status: item?.status || 'in_stock',
+    status: item?.status || defaultStatus || 'in_stock',
     customerName: item?.customerName || '',
     customerPhone: item?.customerPhone || '',
     customerTelegram: item?.customerTelegram || '',
+    prePaymentETB: item?.prePaymentETB?.toString() ?? '',
   });
 
   const totalCostPriceETB = calculateTotalCost(
@@ -76,26 +94,40 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!userId) {
+      setError('User identity not established. Please wait or refresh.');
+      return;
+    }
     setIsSubmitting(true);
     setError(null);
     
+      const totalQuantity = variants.length > 0 
+        ? variants.reduce((sum, v) => sum + (Number(v.quantity) || 0), 0)
+        : Number(formData.quantityStocked) || 0;
+
       const itemData: any = {
         ...formData,
-        quantityStocked: Number(formData.quantityStocked) || 0,
+        quantityStocked: totalQuantity,
         buyingPriceUSD: Number(formData.buyingPriceUSD) || 0,
         exchangeRate: Number(formData.exchangeRate) || 0,
         shippingCostETB: Number(formData.shippingCostETB) || 0,
         customsTaxETB: Number(formData.customsTaxETB) || 0,
         localDeliveryFeeETB: Number(formData.localDeliveryFeeETB) || 0,
         sellingPriceETB: Number(formData.sellingPriceETB) || 0,
+        prePaymentETB: Number(formData.prePaymentETB) || 0,
         totalCostPriceETB,
       };
+
+      if (variants.length > 0) {
+        itemData.variants = variants;
+      }
 
       // Clean up customer fields if not ordered
       if (itemData.status !== 'ordered') {
         delete itemData.customerName;
         delete itemData.customerPhone;
         delete itemData.customerTelegram;
+        delete itemData.prePaymentETB;
       }
 
     try {
@@ -107,7 +139,21 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
         // Post to Telegram if configured and checked
         if (postToTelegram && settings?.telegramBotToken && settings?.telegramChatId) {
           try {
-            const caption = `✨Available on hand\n✨Price- ${itemData.sellingPriceETB} ETB\n     Size - ${itemData.size}\n     Contact- @Mirafashion22`;
+            const contactUsername = settings.telegramUsername || import.meta.env.VITE_TELEGRAM_USERNAME || 'Seller';
+            
+            let caption = '';
+            if (settings.autoPostTemplate) {
+              caption = settings.autoPostTemplate
+                .replace(/{itemName}/g, itemData.itemName || '')
+                .replace(/{price}/g, itemData.sellingPriceETB?.toString() || '0')
+                .replace(/{size}/g, itemData.size || '')
+                .replace(/{category}/g, itemData.category || '')
+                .replace(/{sku}/g, itemData.sheinSku || '')
+                .replace(/{telegramUsername}/g, contactUsername);
+            } else {
+              caption = `✨Available on hand\n✨Price- ${itemData.sellingPriceETB} ETB\n     Size - ${itemData.size}\n     Contact- @${contactUsername}`;
+            }
+
             const tgFormData = new FormData();
             tgFormData.append('chat_id', settings.telegramChatId);
             tgFormData.append('caption', caption);
@@ -251,6 +297,17 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
                       className="mt-1 block w-full rounded-md border border-indigo-200 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:text-sm"
                     />
                   </div>
+                  <div>
+                    <label className="block text-xs font-medium text-indigo-700">Pre-payment (ETB)</label>
+                    <input
+                      type="number"
+                      name="prePaymentETB"
+                      value={formData.prePaymentETB}
+                      onChange={handleChange}
+                      placeholder="0"
+                      className="mt-1 block w-full rounded-md border border-indigo-200 px-3 py-2 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:text-sm"
+                    />
+                  </div>
                 </div>
               </div>
             )}
@@ -311,9 +368,70 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
                 min="0"
                 value={formData.quantityStocked}
                 onChange={handleChange}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black sm:text-sm"
+                disabled={variants.length > 0}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black sm:text-sm disabled:bg-gray-100"
               />
+              {variants.length > 0 && (
+                <p className="mt-1 text-xs text-gray-500 italic">Managed by variants below</p>
+              )}
             </div>
+          </div>
+
+          {/* Variants Section */}
+          <div className="border-t border-gray-200 pt-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Product Variants (Sizes)</h3>
+              <button
+                type="button"
+                onClick={addVariant}
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-[#a94442] hover:text-red-800"
+              >
+                <Plus className="h-4 w-4" />
+                Add Variant
+              </button>
+            </div>
+            
+            {variants.length > 0 ? (
+              <div className="space-y-3">
+                {variants.map((variant, index) => (
+                  <div key={index} className="flex items-center gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Size</label>
+                      <select
+                        value={variant.size}
+                        onChange={(e) => handleVariantChange(index, 'size', e.target.value)}
+                        className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                      >
+                        {['XS', 'S', 'M', 'L', 'XL', 'XXL', 'One Size'].map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="w-32">
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Quantity</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={variant.quantity}
+                        onChange={(e) => handleVariantChange(index, 'quantity', Number(e.target.value))}
+                        className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeVariant(index)}
+                      className="mt-5 p-2 text-gray-400 hover:text-red-600 transition-colors"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 italic bg-gray-50 p-4 rounded-lg border border-dashed border-gray-300 text-center">
+                No variants added. Using default size and quantity.
+              </p>
+            )}
           </div>
 
           <div className="border-t border-gray-200 pt-6">

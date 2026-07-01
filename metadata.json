@@ -1,5 +1,5 @@
 {
-  "name": "Mira Fashion Admin",
-  "description": "Business management dashboard for Mira Fashion to track inventory, import costs, and profits.",
+  "name": "Fashion Platform Admin",
+  "description": "Business management dashboard for a multi-shop fashion platform to track inventory, import costs, and profits.",
   "requestFramePermissions": []
 }

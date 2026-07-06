@@ -115,15 +115,28 @@ export function Storefront() {
     return Array.from(cats);
   }, [items]);
 
-  const sizes = ['All', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'One Size'];
+  const sizes = useMemo(() => {
+    const szs = new Set(['All']);
+    items.forEach(item => {
+      if (item.size) szs.add(item.size);
+      if (item.variants) {
+        item.variants.forEach((v: any) => {
+          if (v.size) szs.add(v.size);
+        });
+      }
+    });
+    return Array.from(szs);
+  }, [items]);
 
   const filteredItems = items.filter(item => {
     const isAvailable = !item.status || item.status === 'in_stock';
     const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
-    const matchesSize = selectedSize === 'All' || item.size === selectedSize;
+    const matchesSize = selectedSize === 'All' || 
+                        item.size === selectedSize || 
+                        (item.variants && item.variants.some((v: any) => v.size === selectedSize));
     const itemName = item.itemName || '';
     const matchesSearch = itemName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         (item.sheinSku && item.sheinSku.toLowerCase().includes(searchQuery.toLowerCase()));
+                          (item.sheinSku && item.sheinSku.toLowerCase().includes(searchQuery.toLowerCase()));
     return isAvailable && matchesCategory && matchesSize && matchesSearch;
   });
 
@@ -502,12 +515,12 @@ export function Storefront() {
               </div>
 
               {/* Size Filter */}
-              <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-lg">
-                {sizes.slice(0, 5).map(size => (
+              <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-lg max-w-full overflow-x-auto scrollbar-none">
+                {sizes.map(size => (
                   <button
                     key={size}
                     onClick={() => setSelectedSize(size)}
-                    className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-tighter rounded transition-all ${
+                    className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-tighter rounded transition-all whitespace-nowrap ${
                       selectedSize === size
                         ? 'bg-white text-black shadow-sm'
                         : 'text-gray-400 hover:text-black'

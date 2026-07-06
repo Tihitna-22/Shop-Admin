@@ -3,7 +3,7 @@ import { useInventory } from '../context/InventoryContext';
 import { Send, Save, User } from 'lucide-react';
 
 export function Settings() {
-  const { settings, updateSettings } = useInventory();
+  const { settings, updateSettings, userId, businessId } = useInventory();
   const [botToken, setBotToken] = useState('');
   const [chatId, setChatId] = useState('');
   const [personalChatId, setPersonalChatId] = useState('');
@@ -44,8 +44,36 @@ export function Settings() {
         shopName,
         shopDescription,
       });
-      setSaveMessage('Settings saved successfully!');
-      setTimeout(() => setSaveMessage(''), 3000);
+
+      // Notify Express server to sync and start/restart the bot immediately
+      const shopId = businessId || userId;
+      if (shopId) {
+        try {
+          const res = await fetch('/api/telegram/sync-settings', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              shopId,
+              telegramBotToken: botToken,
+              telegramChatId: chatId,
+            }),
+          });
+          const result = await res.json();
+          if (result.success) {
+            setSaveMessage('Settings saved & Telegram Bot connected successfully!');
+          } else {
+            setSaveMessage(`Settings saved, but Bot failed: ${result.error || 'unknown error'}`);
+          }
+        } catch (syncErr) {
+          console.error('Error syncing bot settings to backend:', syncErr);
+          setSaveMessage('Settings saved locally, but failed to sync to Telegram backend.');
+        }
+      } else {
+        setSaveMessage('Settings saved successfully!');
+      }
+      setTimeout(() => setSaveMessage(''), 4000);
     } catch (error) {
       setSaveMessage('Failed to save settings.');
     } finally {
@@ -152,7 +180,7 @@ export function Settings() {
                 />
               </div>
               <p className="mt-1 text-xs text-gray-500">
-                Daily sales reports will be sent here instead of the public channel.
+                Daily sales reports will be sent here, and you can create new orders directly from Telegram using the `/addorder` command with your bot.
               </p>
             </div>
 

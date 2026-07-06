@@ -238,6 +238,39 @@
         "businessId": { "type": "string" }
       },
       "required": ["uid", "email", "role"]
+    },
+    "WholeOrder": {
+      "title": "WholeOrder",
+      "description": "A whole order or batch tracking international shipping, customs, other expenses, and statuses.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "userId": {
+          "type": "string"
+        },
+        "orderName": {
+          "type": "string"
+        },
+        "dateOrdered": {
+          "type": "string"
+        },
+        "orderShippingCostETB": {
+          "type": "number"
+        },
+        "orderCustomsTaxETB": {
+          "type": "number"
+        },
+        "orderOtherExpensesETB": {
+          "type": "number"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["ordered", "received", "completed"]
+        }
+      },
+      "required": ["id", "userId", "dateOrdered", "orderShippingCostETB", "orderCustomsTaxETB", "orderOtherExpensesETB", "status"]
     }
   },
   "firestore": {
@@ -278,6 +311,12 @@
         "$ref": "#/entities/DiscountCode"
       },
       "description": "Discount codes."
+    },
+    "/wholeOrders/{orderId}": {
+      "schema": {
+        "$ref": "#/entities/WholeOrder"
+      },
+      "description": "Whole orders / shipping batches."
     }
   }
 }

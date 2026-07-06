@@ -5,7 +5,8 @@ import {
   Download, Calendar, ArrowUpRight, ArrowDownRight, DollarSign, Users, 
   BarChart3, Package, UserCircle, ShoppingCart, TrendingUp, AlertTriangle, 
   Layers, ListFilter, PieChart, Sparkles, CheckCircle2, FileText, Info,
-  Printer, ArrowRight, Tag, Percent, RefreshCw, ShoppingBag, EyeOff, AlertCircle
+  Printer, ArrowRight, Tag, Percent, RefreshCw, ShoppingBag, EyeOff, AlertCircle,
+  Send, MessageSquare
 } from 'lucide-react';
 import { 
   format, subDays, isSameDay, parseISO, startOfMonth, isSameMonth, 
@@ -13,6 +14,19 @@ import {
   endOfMonth, startOfYesterday, subWeeks
 } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+
+function getTelegramLink(tg: string) {
+  const clean = tg.replace('@', '').trim();
+  return `https://t.me/${clean}`;
+}
+
+function getWhatsAppLink(phone: string) {
+  let clean = phone.replace(/[^\d]/g, '');
+  if (clean.startsWith('0') && clean.length === 10) {
+    clean = '251' + clean.substring(1);
+  }
+  return `https://wa.me/${clean}`;
+}
 
 export function Reports() {
   const { sales, inventory, expenses, userProfile } = useInventory();
@@ -1011,7 +1025,32 @@ export function Reports() {
                             <tr key={order.id} className="hover:bg-gray-50">
                               <td className="px-3 py-2">
                                 <div className="font-bold text-gray-800">{order.customerName || 'Walk-in'}</div>
-                                <div className="text-[10px] text-gray-400">{order.customerPhone || ''}</div>
+                                <div className="flex flex-wrap gap-1.5 mt-1">
+                                  {order.customerTelegram && (
+                                    <a
+                                      href={getTelegramLink(order.customerTelegram)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-0.5 text-[10px] font-medium text-sky-600 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 px-1 py-0.5 rounded transition-all"
+                                      title="Chat on Telegram"
+                                    >
+                                      <Send className="h-2 w-2" />
+                                      <span>TG</span>
+                                    </a>
+                                  )}
+                                  {order.customerPhone && (
+                                    <a
+                                      href={getWhatsAppLink(order.customerPhone)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-600 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-1 py-0.5 rounded transition-all"
+                                      title="Chat on WhatsApp"
+                                    >
+                                      <MessageSquare className="h-2 w-2" />
+                                      <span>WA</span>
+                                    </a>
+                                  )}
+                                </div>
                               </td>
                               <td className="px-3 py-2">
                                 <div className="font-semibold text-gray-800">{order.itemName}</div>
@@ -1344,9 +1383,31 @@ export function Reports() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="font-bold text-gray-900">{order.customerName || 'Anonymous Customer'}</div>
-                          <div className="text-[10px] text-gray-500 font-mono">
-                            {order.customerPhone ? `Ph: ${order.customerPhone}` : ''}
-                            {order.customerTelegram ? ` | TG: @${order.customerTelegram}` : ''}
+                          <div className="flex flex-wrap gap-1.5 mt-1">
+                            {order.customerTelegram && (
+                              <a
+                                href={getTelegramLink(order.customerTelegram)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 text-[10px] font-medium text-sky-600 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 px-1 py-0.5 rounded transition-all"
+                                title="Chat on Telegram"
+                              >
+                                <Send className="h-2 w-2" />
+                                <span>TG</span>
+                              </a>
+                            )}
+                            {order.customerPhone && (
+                              <a
+                                href={getWhatsAppLink(order.customerPhone)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-600 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-1 py-0.5 rounded transition-all"
+                                title="Chat on WhatsApp"
+                              >
+                                <MessageSquare className="h-2 w-2" />
+                                <span>WA</span>
+                              </a>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-3">

@@ -3,7 +3,7 @@ import { useInventory } from '../context/InventoryContext';
 import { Category, Size, InventoryItem, ProductVariant } from '../types';
 import { calculateTotalCost } from '../lib/formatters';
 import { compressImage } from '../lib/utils';
-import { X, Upload, Plus, Trash2 } from 'lucide-react';
+import { X, Upload, Plus, Trash2, Search } from 'lucide-react';
 
 interface ItemFormProps {
   item?: InventoryItem;
@@ -12,13 +12,14 @@ interface ItemFormProps {
 }
 
 export function ItemForm({ item, onClose, defaultStatus }: ItemFormProps) {
-  const { addItem, updateItem, settings, userId } = useInventory();
+  const { addItem, updateItem, settings, userId, wholeOrders, customers } = useInventory();
   console.log('ItemForm: Current userId from context:', userId);
   const [isCompressing, setIsCompressing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [postToTelegram, setPostToTelegram] = useState(false);
   const [variants, setVariants] = useState<ProductVariant[]>(item?.variants || []);
+  const [customerSearch, setCustomerSearch] = useState('');
 
   const addVariant = () => {
     setVariants([...variants, { size: 'M', quantity: 1 }]);
@@ -58,6 +59,7 @@ export function ItemForm({ item, onClose, defaultStatus }: ItemFormProps) {
     customerPhone: item?.customerPhone || '',
     customerTelegram: item?.customerTelegram || '',
     prePaymentETB: item?.prePaymentETB?.toString() ?? '',
+    orderId: item?.orderId || '',
   });
 
   const totalCostPriceETB = calculateTotalCost(
@@ -107,6 +109,7 @@ export function ItemForm({ item, onClose, defaultStatus }: ItemFormProps) {
 
       const itemData: any = {
         ...formData,
+        size: String(formData.size || ''),
         quantityStocked: totalQuantity,
         buyingPriceUSD: Number(formData.buyingPriceUSD) || 0,
         exchangeRate: Number(formData.exchangeRate) || 0,
@@ -116,10 +119,15 @@ export function ItemForm({ item, onClose, defaultStatus }: ItemFormProps) {
         sellingPriceETB: Number(formData.sellingPriceETB) || 0,
         prePaymentETB: Number(formData.prePaymentETB) || 0,
         totalCostPriceETB,
+        orderId: formData.orderId || '',
       };
 
       if (variants.length > 0) {
-        itemData.variants = variants;
+        itemData.variants = variants.map(v => ({
+          ...v,
+          size: String(v.size || ''),
+          quantity: Number(v.quantity) || 0
+        }));
       }
 
       // Clean up customer fields if not ordered
@@ -263,6 +271,93 @@ export function ItemForm({ item, onClose, defaultStatus }: ItemFormProps) {
             {formData.status === 'ordered' && (
               <div className="sm:col-span-2 bg-indigo-50 p-4 rounded-lg border border-indigo-100 space-y-4">
                 <h3 className="text-sm font-medium text-indigo-900">Customer Details (Optional)</h3>
+                
+                {/* Customer Selection from existing Customers */}
+                {customers && customers.length > 0 && (
+                  <div className="bg-white p-3 rounded-md border border-indigo-100 space-y-2 shadow-sm">
+                    <label className="block text-xs font-semibold text-indigo-900">
+                      Select from Existing Customers:
+                    </label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2.5">
+                          <Search className="h-3.5 w-3.5 text-gray-400" />
+                        </div>
+                        <input
+                          type="text"
+                          placeholder="Search customer by name, phone, or Telegram..."
+                          value={customerSearch}
+                          onChange={(e) => setCustomerSearch(e.target.value)}
+                          className="block w-full rounded-md border border-gray-300 py-1.5 pl-8 pr-3 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                      </div>
+                      {customerSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setCustomerSearch('')}
+                          className="text-xs text-gray-500 hover:text-gray-700 font-medium px-2 py-1 rounded hover:bg-gray-100 border border-gray-200 transition-colors"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    
+                    {/* Customer Selection Dropdown */}
+                    <div className="relative">
+                      <select
+                        onChange={(e) => {
+                          const custId = e.target.value;
+                          if (custId) {
+                            const selectedCust = customers.find(c => c.id === custId);
+                            if (selectedCust) {
+                              setFormData(prev => ({
+                                ...prev,
+                                customerName: selectedCust.name || '',
+                                customerPhone: selectedCust.phone || '',
+                                customerTelegram: selectedCust.telegram || '',
+                              }));
+                            }
+                          }
+                        }}
+                        className="block w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-700 shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        defaultValue=""
+                      >
+                        <option value="">-- Click to select customer ({
+                          customerSearch 
+                            ? `${customers.filter(c => {
+                                const q = customerSearch.toLowerCase();
+                                return c.name.toLowerCase().includes(q) || 
+                                       (c.phone && c.phone.includes(q)) || 
+                                       (c.telegram && c.telegram.toLowerCase().includes(q));
+                              }).length} matches` 
+                            : `${customers.length} total`
+                        }) --</option>
+                        {(customerSearch 
+                          ? customers.filter(c => {
+                              const q = customerSearch.toLowerCase();
+                              return c.name.toLowerCase().includes(q) || 
+                                     (c.phone && c.phone.includes(q)) || 
+                                     (c.telegram && c.telegram.toLowerCase().includes(q));
+                            })
+                          : customers
+                        ).slice(0, 50).map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} {c.phone ? `| Phone: ${c.phone}` : ''} {c.telegram ? `| Telegram: @${c.telegram.replace('@', '')}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                      {customerSearch && customers.filter(c => {
+                        const q = customerSearch.toLowerCase();
+                        return c.name.toLowerCase().includes(q) || 
+                               (c.phone && c.phone.includes(q)) || 
+                               (c.telegram && c.telegram.toLowerCase().includes(q));
+                      }).length === 0 && (
+                        <p className="text-[10px] text-amber-600 mt-1">No customers match your search query.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <div>
                     <label className="block text-xs font-medium text-indigo-700">Name</label>
@@ -313,6 +408,26 @@ export function ItemForm({ item, onClose, defaultStatus }: ItemFormProps) {
             )}
             
             <div>
+              <label className="block text-sm font-medium text-gray-700">Whole Order / Batch (Optional)</label>
+              <select
+                name="orderId"
+                value={formData.orderId}
+                onChange={handleChange}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black sm:text-sm"
+              >
+                <option value="">-- None (Individual Item) --</option>
+                {wholeOrders?.map((order) => (
+                  <option key={order.id} value={order.id}>
+                    {order.id} {order.orderName ? `(${order.orderName})` : ''}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                Link this item to a Whole Order/Batch to track and aggregate costs, expenses, and profits.
+              </p>
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-gray-700">Item Name</label>
               <input
                 type="text"
@@ -342,23 +457,34 @@ export function ItemForm({ item, onClose, defaultStatus }: ItemFormProps) {
                 onChange={handleChange}
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black sm:text-sm"
               >
-                {['Top', 'Dress', 'Trouser', 'Bra'].map((c) => (
+                {['Top', 'Dress', 'Trouser', 'Bra', 'Other'].map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Size</label>
-              <select
-                name="size"
-                value={formData.size}
-                onChange={handleChange}
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black sm:text-sm"
-              >
-                {['XS', 'S', 'M', 'L', 'XL', 'XXL', 'One Size'].map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
+              {formData.category === 'Other' ? (
+                <input
+                  type="text"
+                  name="size"
+                  value={formData.size}
+                  onChange={handleChange}
+                  placeholder="e.g. 38, 100ml, Standard"
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black sm:text-sm"
+                />
+              ) : (
+                <select
+                  name="size"
+                  value={formData.size}
+                  onChange={handleChange}
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black sm:text-sm"
+                >
+                  {['XS', 'S', 'M', 'L', 'XL', 'XXL', 'One Size'].map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Quantity Stocked</label>
@@ -397,15 +523,25 @@ export function ItemForm({ item, onClose, defaultStatus }: ItemFormProps) {
                   <div key={index} className="flex items-center gap-4 bg-gray-50 p-3 rounded-lg border border-gray-200">
                     <div className="flex-1">
                       <label className="block text-xs font-medium text-gray-500 mb-1">Size</label>
-                      <select
-                        value={variant.size}
-                        onChange={(e) => handleVariantChange(index, 'size', e.target.value)}
-                        className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
-                      >
-                        {['XS', 'S', 'M', 'L', 'XL', 'XXL', 'One Size'].map((s) => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
+                      {formData.category === 'Other' ? (
+                        <input
+                          type="text"
+                          value={variant.size}
+                          onChange={(e) => handleVariantChange(index, 'size', e.target.value)}
+                          placeholder="e.g. 38, 100ml"
+                          className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                        />
+                      ) : (
+                        <select
+                          value={variant.size}
+                          onChange={(e) => handleVariantChange(index, 'size', e.target.value)}
+                          className="block w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                        >
+                          {['XS', 'S', 'M', 'L', 'XL', 'XXL', 'One Size'].map((s) => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                     <div className="w-32">
                       <label className="block text-xs font-medium text-gray-500 mb-1">Quantity</label>

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { InventoryItem, Sale, Expense, StoreSettings, Size, UserProfile, UserRole, Customer, DiscountCode, Business } from '../types';
+import { InventoryItem, Sale, Expense, StoreSettings, Size, UserProfile, UserRole, Customer, DiscountCode, Business, WholeOrder } from '../types';
 import { db, auth } from '../firebase';
 import { collection, doc, setDoc, deleteDoc, updateDoc, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged, createUserWithEmailAndPassword } from 'firebase/auth';
@@ -29,7 +29,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
     errMessage.includes('CANCELLED') ||
     errMessage.includes('Timed out waiting for new targets')
   ) {
-    console.warn(`Firestore ${operationType} warning (benign):`, errMessage, path ? `at ${path}` : '');
+    console.info('Firestore connection refresh (idle stream reset).');
     return;
   }
 
@@ -64,10 +64,12 @@ interface InventoryContextType {
   discountCodes: DiscountCode[];
   businesses: Business[];
   staff: UserProfile[];
+  wholeOrders: WholeOrder[];
   addItem: (item: Omit<InventoryItem, 'id' | 'userId' | 'dateAdded'>) => Promise<void>;
   updateItem: (id: string, item: Partial<InventoryItem>) => Promise<void>;
   deleteItem: (id: string) => Promise<void>;
   deleteSale: (id: string) => Promise<void>;
+  updateSale: (id: string, sale: Partial<Sale>) => Promise<void>;
   markAsSold: (id: string, quantity: number, selectedSize?: Size, customerId?: string, discountCodeId?: string, discountAmountETB?: number) => Promise<void>;
   updateItemStatus: (id: string, status: 'in_stock' | 'ordered') => Promise<void>;
   addExpense: (expense: Omit<Expense, 'id' | 'userId' | 'date'>) => Promise<void>;
@@ -81,6 +83,9 @@ interface InventoryContextType {
   createStaff: (email: string, name: string, role: 'editor' | 'seller') => Promise<void>;
   updateStaffRole: (uid: string, role: UserRole) => Promise<void>;
   deleteStaff: (uid: string) => Promise<void>;
+  addWholeOrder: (order: WholeOrder) => Promise<void>;
+  updateWholeOrder: (id: string, order: Partial<WholeOrder>) => Promise<void>;
+  deleteWholeOrder: (id: string) => Promise<void>;
   userProfile: UserProfile | null;
   switchRole: (role: UserRole) => void;
   userId: string | null;
@@ -99,6 +104,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const [discountCodes, setDiscountCodes] = useState<DiscountCode[]>([]);
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [staff, setStaff] = useState<UserProfile[]>([]);
+  const [wholeOrders, setWholeOrders] = useState<WholeOrder[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [businessId, setBusinessId] = useState<string | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -221,6 +227,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       setInventory([]);
       setSales([]);
       setExpenses([]);
+      setWholeOrders([]);
       setSettings(null);
       return;
     }
@@ -241,6 +248,20 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       setInventory(items);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'inventory');
+    });
+
+    const wholeOrdersQuery = userProfile?.role === 'superadmin'
+      ? query(collection(db, 'wholeOrders'))
+      : query(collection(db, 'wholeOrders'), where('userId', '==', filterId));
+      
+    const unsubscribeWholeOrders = onSnapshot(wholeOrdersQuery, (snapshot) => {
+      const wo: WholeOrder[] = [];
+      snapshot.forEach((doc) => {
+        wo.push({ id: doc.id, ...doc.data() } as WholeOrder);
+      });
+      setWholeOrders(wo);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'wholeOrders');
     });
 
     const salesQuery = userProfile?.role === 'superadmin'
@@ -271,29 +292,17 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       handleFirestoreError(error, OperationType.LIST, 'expenses');
     });
 
-    const settingsRef = userProfile?.role === 'superadmin'
-      ? collection(db, 'settings')
-      : doc(db, 'settings', filterId!);
+    const settingsRef = doc(db, 'settings', filterId!);
 
-    let unsubscribeSettings: () => void;
-    
-    if (userProfile?.role === 'superadmin') {
-      unsubscribeSettings = onSnapshot(query(settingsRef as any), (snapshot) => {
-        if (!snapshot.empty) {
-          setSettings(snapshot.docs[0].data() as StoreSettings);
-        }
-      });
-    } else {
-      unsubscribeSettings = onSnapshot(settingsRef as any, (docSnap: any) => {
-        if (docSnap.exists()) {
-          setSettings(docSnap.data() as StoreSettings);
-        } else {
-          setSettings({ userId: filterId! });
-        }
-      }, (error: any) => {
-        handleFirestoreError(error, OperationType.GET, `settings/${filterId}`);
-      });
-    }
+    const unsubscribeSettings = onSnapshot(settingsRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setSettings(docSnap.data() as StoreSettings);
+      } else {
+        setSettings({ userId: filterId! });
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `settings/${filterId}`);
+    });
 
     const customersQuery = userProfile?.role === 'superadmin'
       ? query(collection(db, 'customers'))
@@ -325,6 +334,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
 
     return () => {
       unsubscribeInventory();
+      unsubscribeWholeOrders();
       unsubscribeSales();
       unsubscribeExpenses();
       unsubscribeSettings();
@@ -405,6 +415,57 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const checkAndAddCustomer = async (cust: { name: string; phone: string; telegram: string; prePayment: number }) => {
+    const filterId = businessId || userId;
+    if (!filterId || !cust.name) return;
+    
+    const lowercaseName = cust.name.toLowerCase().trim();
+    const cleanPhone = cust.phone ? cust.phone.trim() : '';
+    const cleanTelegram = cust.telegram ? cust.telegram.toLowerCase().replace('@', '').trim() : '';
+    const prePay = Number(cust.prePayment) || 0;
+    
+    const existing = customers.find(c => {
+      if (cleanPhone && c.phone === cleanPhone) return true;
+      if (cleanTelegram && c.telegram?.toLowerCase().replace('@', '') === cleanTelegram) return true;
+      return c.name.toLowerCase().trim() === lowercaseName;
+    });
+    
+    if (!existing) {
+      const id = Math.random().toString(36).substring(2, 9);
+      const newCustomer: Customer = {
+        id,
+        userId: filterId,
+        name: cust.name.trim(),
+        phone: cleanPhone,
+        telegram: cleanTelegram ? `@${cleanTelegram}` : '',
+        totalSpend: prePay,
+        points: Math.floor(prePay / 100),
+        vipStatus: prePay >= 10000 ? 'gold' : prePay >= 5000 ? 'silver' : prePay >= 2000 ? 'bronze' : 'none',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await setDoc(doc(db, 'customers', id), newCustomer);
+    } else {
+      if (prePay > 0) {
+        const spendAmount = prePay;
+        const newTotalSpend = existing.totalSpend + spendAmount;
+        const newPoints = existing.points + Math.floor(spendAmount / 100);
+        
+        let newVipStatus = existing.vipStatus;
+        if (newTotalSpend >= 10000) newVipStatus = 'gold';
+        else if (newTotalSpend >= 5000) newVipStatus = 'silver';
+        else if (newTotalSpend >= 2000) newVipStatus = 'bronze';
+
+        await updateDoc(doc(db, 'customers', existing.id), {
+          totalSpend: newTotalSpend,
+          points: newPoints,
+          vipStatus: newVipStatus,
+          updatedAt: new Date().toISOString()
+        });
+      }
+    }
+  };
+
   const addItem = async (itemData: Omit<InventoryItem, 'id' | 'userId' | 'dateAdded'>) => {
     const filterId = businessId || userId;
     if (!filterId) return;
@@ -417,6 +478,14 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     };
     try {
       await setDoc(doc(db, 'inventory', id), newItem);
+      if (newItem.customerName) {
+        await checkAndAddCustomer({
+          name: newItem.customerName,
+          phone: newItem.customerPhone || '',
+          telegram: newItem.customerTelegram || '',
+          prePayment: Number(newItem.prePaymentETB) || 0
+        });
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, `inventory/${id}`);
     }
@@ -426,6 +495,14 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     if (!userId && !businessId) return;
     try {
       await updateDoc(doc(db, 'inventory', id), itemData);
+      if (itemData.customerName) {
+        await checkAndAddCustomer({
+          name: itemData.customerName,
+          phone: itemData.customerPhone || '',
+          telegram: itemData.customerTelegram || '',
+          prePayment: Number(itemData.prePaymentETB) || 0
+        });
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `inventory/${id}`);
     }
@@ -462,6 +539,15 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       await deleteDoc(doc(db, 'sales', id));
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `sales/${id}`);
+    }
+  };
+
+  const updateSale = async (id: string, saleData: Partial<Sale>) => {
+    if (!userId && !businessId) return;
+    try {
+      await updateDoc(doc(db, 'sales', id), saleData);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `sales/${id}`);
     }
   };
 
@@ -508,6 +594,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       ...(discountCodeId && { discountCodeId }),
       ...(discountAmountETB && { discountAmountETB }),
       ...(item.image && { image: item.image }),
+      ...(item.orderId && { orderId: item.orderId }),
     };
 
     try {
@@ -711,6 +798,39 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const addWholeOrder = async (order: WholeOrder) => {
+    const filterId = businessId || userId;
+    if (!filterId) return;
+    try {
+      await setDoc(doc(db, 'wholeOrders', order.id), {
+        ...order,
+        userId: filterId,
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `wholeOrders/${order.id}`);
+    }
+  };
+
+  const updateWholeOrder = async (id: string, orderUpdates: Partial<WholeOrder>) => {
+    try {
+      const cleanUpdates = { ...orderUpdates };
+      if (!cleanUpdates.userId) {
+        delete cleanUpdates.userId;
+      }
+      await setDoc(doc(db, 'wholeOrders', id), cleanUpdates, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `wholeOrders/${id}`);
+    }
+  };
+
+  const deleteWholeOrder = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'wholeOrders', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `wholeOrders/${id}`);
+    }
+  };
+
   return (
     <InventoryContext.Provider
       value={{ 
@@ -722,6 +842,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         updateItem, 
         deleteItem, 
         deleteSale, 
+        updateSale,
         markAsSold, 
         updateItemStatus, 
         addExpense, 
@@ -736,6 +857,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         discountCodes,
         businesses,
         staff,
+        wholeOrders,
         addCustomer,
         updateCustomer,
         addDiscountCode,
@@ -744,6 +866,9 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         createStaff,
         updateStaffRole,
         deleteStaff,
+        addWholeOrder,
+        updateWholeOrder,
+        deleteWholeOrder,
       }}
     >
       {children}

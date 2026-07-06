@@ -1,5 +1,5 @@
-export type Category = 'Top' | 'Dress' | 'Trouser' | 'Bra';
-export type Size = 'XS' | 'S' | 'M' | 'L' | 'XL' | 'XXL' | 'One Size';
+export type Category = 'Top' | 'Dress' | 'Trouser' | 'Bra' | 'Other';
+export type Size = string;
 
 export interface ProductVariant {
   size: Size;
@@ -29,6 +29,7 @@ export interface InventoryItem {
   customerPhone?: string;
   customerTelegram?: string;
   prePaymentETB?: number;
+  orderId?: string; // Links item to a WholeOrder/Batch
 }
 
 export interface Customer {
@@ -80,6 +81,7 @@ export interface Sale {
   discountCodeId?: string;
   discountAmountETB?: number;
   image?: string;
+  orderId?: string; // Links sale back to its original WholeOrder/Batch
 }
 
 export type ExpenseCategory = 'Rent' | 'Internet' | 'Packaging' | 'Transport' | 'Other';
@@ -126,4 +128,15 @@ export interface Business {
   ownerUid: string; // UID of the admin who owns this business
   createdAt: string;
   isActive: boolean;
+}
+
+export interface WholeOrder {
+  id: string; // Order ID or Batch Code
+  userId: string;
+  orderName?: string;
+  dateOrdered: string;
+  orderShippingCostETB: number;
+  orderCustomsTaxETB: number;
+  orderOtherExpensesETB: number;
+  status: 'ordered' | 'received' | 'completed';
 }

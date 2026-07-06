@@ -109,7 +109,7 @@ service cloud.firestore {
              data.userId is string &&
              data.itemName is string && data.itemName.size() > 0 && data.itemName.size() < 200 &&
              data.sheinSku is string && data.sheinSku.size() > 0 && data.sheinSku.size() < 100 &&
-             data.category in ['Top', 'Dress', 'Trouser', 'Bra'] &&
+             data.category in ['Top', 'Dress', 'Trouser', 'Bra', 'Other'] &&
              data.size is string && data.size.size() > 0 && data.size.size() < 20 &&
              data.quantityStocked is number && data.quantityStocked >= 0 &&
              data.buyingPriceUSD is number && data.buyingPriceUSD >= 0 &&
@@ -129,7 +129,7 @@ service cloud.firestore {
              data.itemId is string && data.itemId.size() > 0 && data.itemId.size() < 100 &&
              data.itemName is string && data.itemName.size() > 0 && data.itemName.size() < 200 &&
              data.sheinSku is string && data.sheinSku.size() > 0 && data.sheinSku.size() < 100 &&
-             data.category in ['Top', 'Dress', 'Trouser', 'Bra'] &&
+             data.category in ['Top', 'Dress', 'Trouser', 'Bra', 'Other'] &&
              data.quantitySold is number && data.quantitySold > 0 &&
              data.sellingPriceETB is number && data.sellingPriceETB >= 0 &&
              data.totalCostPriceETB is number && data.totalCostPriceETB >= 0 &&
@@ -168,25 +168,39 @@ service cloud.firestore {
              isValidDateString(data.createdAt);
     }
 
+    function isValidWholeOrder(data) {
+      return hasRequiredFields(['id', 'userId', 'dateOrdered', 'orderShippingCostETB', 'orderCustomsTaxETB', 'orderOtherExpensesETB', 'status']) &&
+             data.id is string && data.id.size() > 0 && data.id.size() < 100 &&
+             data.userId is string &&
+             data.dateOrdered is string && data.dateOrdered.size() > 0 && data.dateOrdered.size() < 50 &&
+             (!('orderName' in data) || (data.orderName is string && data.orderName.size() < 200)) &&
+             data.orderShippingCostETB is number && data.orderShippingCostETB >= 0 &&
+             data.orderCustomsTaxETB is number && data.orderCustomsTaxETB >= 0 &&
+             data.orderOtherExpensesETB is number && data.orderOtherExpensesETB >= 0 &&
+             data.status in ['ordered', 'received', 'completed'];
+    }
+
     function isSuperAdmin() {
-      return isAuthenticated() && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin' ||
-         (request.auth.token.email == "tihitna222sisay@gmail.com" && request.auth.token.email_verified == true));
+      let path = /databases/$(database)/documents/users/$(request.auth.uid);
+      return isAuthenticated() && (
+        (exists(path) && 'role' in get(path).data && get(path).data.role == 'superadmin') ||
+        (request.auth.token.email == "tihitna222sisay@gmail.com" && request.auth.token.email_verified == true)
+      );
     }
 
     function isAdmin() {
-      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      return isAuthenticated() && userDoc.exists && userDoc.data.role == 'admin';
+      let path = /databases/$(database)/documents/users/$(request.auth.uid);
+      return isAuthenticated() && exists(path) && 'role' in get(path).data && get(path).data.role == 'admin';
     }
 
     function getUserData() {
-      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      return userDoc.exists ? userDoc.data : {};
+      let path = /databases/$(database)/documents/users/$(request.auth.uid);
+      return exists(path) ? get(path).data : {};
     }
 
     function hasBusinessAccess(businessId) {
       let userData = getUserData();
-      return isSuperAdmin() || isAdmin() || (userData.businessId == businessId) || (request.auth.uid == businessId);
+      return isSuperAdmin() || isAdmin() || ('businessId' in userData && userData.businessId == businessId) || (request.auth.uid == businessId);
     }
 
     function canAccessDoc(docData) {
@@ -239,8 +253,7 @@ service cloud.firestore {
     }
 
     match /settings/{userId} {
-      allow get: if isAuthenticated();
-      allow list: if isAuthenticated();
+      allow read: if true;
       allow write: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(userId)) && isValidSettings(request.resource.data);
     }
 
@@ -252,8 +265,8 @@ service cloud.firestore {
     match /customers/{customerId} {
       allow get: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId));
       allow list: if isAuthenticated();
-      allow create: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(request.resource.data.userId)) && isValidCustomer(request.resource.data);
-      allow update: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId)) && isValidCustomer(request.resource.data);
+      allow create: if (isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(request.resource.data.userId)) && isValidCustomer(request.resource.data)) || isValidCustomer(request.resource.data);
+      allow update: if (isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId)) && isValidCustomer(request.resource.data)) || isValidCustomer(request.resource.data);
       allow delete: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId));
     }
 
@@ -262,6 +275,14 @@ service cloud.firestore {
       allow list: if true;
       allow create: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(request.resource.data.userId));
       allow update, delete: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId));
+    }
+
+    match /wholeOrders/{orderId} {
+      allow get: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId));
+      allow list: if isAuthenticated();
+      allow create: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(request.resource.data.userId)) && isValidWholeOrder(request.resource.data);
+      allow update: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId)) && isValidWholeOrder(request.resource.data);
+      allow delete: if isAuthenticated() && (isSuperAdmin() || hasBusinessAccess(resource.data.userId));
     }
   }
 }
